@@ -1,149 +1,287 @@
 import { useEffect, useState } from "react";
+import { api, ApiError, borrarToken, guardarToken, leerToken } from "@/lib/api";
 
 /**
- * Sesión SIMULADA para la demostración: usuarios, sesión y negocio se guardan
- * en el navegador (localStorage). Las contraseñas se guardan sin cifrar, por
- * eso esto NO sirve para producción.
+ * Sesión real contra el backend Spring Boot (JWT).
  *
- * Al conectar Spring Boot, reemplaza las funciones de este archivo
- * (registrarUsuario, iniciarSesion, obtenerSesion, guardarNegocio,
- * cerrarSesion) por llamadas a tu API; el resto de la app no cambia.
+ * El backend no guarda el nombre de la persona (solo correo y contraseña),
+ * así que el nombre se recuerda en este navegador solo para el saludo.
+ * La sesión se reconstruye con GET /auth/yo y, si el token ya está ligado a
+ * un sistema, con GET /sistemas/actual.
+ *
+ * `negocio` es el sistema con el que se está trabajando. Un dueño que acaba de
+ * iniciar sesión todavía no eligió uno (negocio = null) y pasa por /sistemas.
  */
 
 export interface NegocioGuardado {
+  id: number;
   nombre: string;
-  logoDataUrl: string | null;
+  logoUrl: string | null;
   colorPrimario: string;
   colorSecundario: string;
-  rubro: string;
-  ruc: string;
-  direccion: string;
-  distrito: string;
-  telefono: string;
 }
 
 export interface Usuario {
   nombre: string;
   correo: string;
+  tipo: "DUENO" | "PERSONAL";
   negocio: NegocioGuardado | null;
 }
 
-interface UsuarioRegistrado extends Usuario {
-  contrasena: string;
-}
-
 export type ResultadoAcceso =
-  | { ok: true; usuario: Usuario }
-  | { ok: false; campo: "correo" | "general"; error: string };
+  { ok: true; usuario: Usuario } | { ok: false; campo: "correo" | "general"; error: string };
 
-const CLAVE_USUARIOS = "cuadrastock:usuarios";
-const CLAVE_SESION = "cuadrastock:sesion";
+export type ResultadoNegocio =
+  { ok: true; negocio: NegocioGuardado } | { ok: false; error: string };
 
-const normalizar = (correo: string) => correo.trim().toLowerCase();
+/* ------------------------------------------------------------
+   Formas de las respuestas del backend (ver Dtos.java)
+   ------------------------------------------------------------ */
 
-function leer<T>(clave: string, porDefecto: T): T {
+interface SistemaApi {
+  idsistema: number;
+  nombrenegocio: string;
+  colorprincipal: string;
+  colorsecundario: string;
+  logourl: string | null;
+}
+
+interface TokenApi {
+  token: string;
+  tipo: "DUENO" | "PERSONAL";
+  sistema: SistemaApi | null;
+}
+
+interface YoApi {
+  correo: string;
+  tipo: "DUENO" | "PERSONAL";
+  idsistema: number | null;
+}
+
+const aNegocio = (s: SistemaApi): NegocioGuardado => ({
+  id: s.idsistema,
+  nombre: s.nombrenegocio,
+  logoUrl: s.logourl,
+  colorPrimario: s.colorprincipal,
+  colorSecundario: s.colorsecundario,
+});
+
+/* ------------------------------------------------------------
+   Nombre de la persona (solo en este navegador)
+   ------------------------------------------------------------ */
+
+const claveNombre = (correo: string) => `cuadrastock:nombre:${correo}`;
+
+function leerNombre(correo: string): string {
   try {
-    const valor = window.localStorage.getItem(clave);
-    return valor ? (JSON.parse(valor) as T) : porDefecto;
+    const guardado = window.localStorage.getItem(claveNombre(correo));
+    if (guardado) return guardado;
   } catch {
-    return porDefecto;
+    /* sin acceso al almacenamiento */
+  }
+  return correo.split("@")[0] || correo;
+}
+
+function guardarNombre(correo: string, nombre: string): void {
+  try {
+    window.localStorage.setItem(claveNombre(correo), nombre);
+  } catch {
+    /* es solo para el saludo: si no se puede guardar, no pasa nada */
   }
 }
 
-function escribir(clave: string, valor: unknown): boolean {
-  try {
-    window.localStorage.setItem(clave, JSON.stringify(valor));
-    return true;
-  } catch {
-    return false;
+/* ------------------------------------------------------------
+   Errores
+   ------------------------------------------------------------ */
+
+function mensajeDe(e: unknown): string {
+  return e instanceof ApiError ? e.message : "Ocurrió un error inesperado. Inténtalo de nuevo.";
+}
+
+function errorDeAcceso(e: unknown): ResultadoAcceso {
+  const error = mensajeDe(e);
+  const esDeCorreo =
+    e instanceof ApiError && [400, 409].includes(e.status) && /correo/i.test(error);
+  return { ok: false, campo: esDeCorreo ? "correo" : "general", error };
+}
+
+const ERROR_ALMACENAMIENTO =
+  "No pudimos guardar tu sesión en este navegador. Revisa que no esté en modo privado.";
+
+/* ------------------------------------------------------------
+   Sesión (con caché en memoria para no repetir peticiones)
+   ------------------------------------------------------------ */
+
+let sesionEnCache: Promise<Usuario | null> | null = null;
+
+async function cargarSesion(): Promise<Usuario> {
+  const yo = await api<YoApi>("/auth/yo");
+  let negocio: NegocioGuardado | null = null;
+
+  if (yo.idsistema !== null) {
+    try {
+      negocio = aNegocio(await api<SistemaApi>("/sistemas/actual"));
+    } catch (e) {
+      // El sistema del token ya no existe: se trata como "sin negocio".
+      if (!(e instanceof ApiError && e.status === 404)) throw e;
+    }
   }
+
+  return { nombre: leerNombre(yo.correo), correo: yo.correo, tipo: yo.tipo, negocio };
 }
 
-function sinContrasena({ contrasena: _contrasena, ...usuario }: UsuarioRegistrado): Usuario {
-  return usuario;
+/** Usuario con sesión iniciada, o null si no hay sesión (o ya venció). */
+export function obtenerSesion(): Promise<Usuario | null> {
+  if (typeof window === "undefined" || !leerToken()) {
+    sesionEnCache = null;
+    return Promise.resolve(null);
+  }
+  if (!sesionEnCache) {
+    sesionEnCache = cargarSesion().catch((e: unknown) => {
+      sesionEnCache = null;
+      if (e instanceof ApiError && e.status === 401) return null;
+      throw e;
+    });
+  }
+  return sesionEnCache;
 }
 
-export function registrarUsuario(datos: {
+export async function registrarUsuario(datos: {
   nombre: string;
   correo: string;
   contrasena: string;
-}): ResultadoAcceso {
-  const usuarios = leer<UsuarioRegistrado[]>(CLAVE_USUARIOS, []);
-  const correo = normalizar(datos.correo);
+}): Promise<ResultadoAcceso> {
+  const correo = datos.correo.trim();
+  try {
+    const r = await api<TokenApi>("/auth/registro", {
+      metodo: "POST",
+      cuerpo: { correo, contrasena: datos.contrasena },
+      conToken: false,
+    });
+    if (!guardarToken(r.token)) return { ok: false, campo: "general", error: ERROR_ALMACENAMIENTO };
 
-  if (usuarios.some((u) => u.correo === correo)) {
-    return { ok: false, campo: "correo", error: "Este correo ya está registrado." };
+    const nombre = datos.nombre.trim();
+    guardarNombre(correo, nombre);
+    // Una cuenta recién creada todavía no tiene negocio.
+    const usuario: Usuario = { nombre, correo, tipo: r.tipo, negocio: null };
+    sesionEnCache = Promise.resolve(usuario);
+    return { ok: true, usuario };
+  } catch (e) {
+    return errorDeAcceso(e);
   }
+}
 
-  const nuevo: UsuarioRegistrado = {
-    nombre: datos.nombre.trim(),
-    correo,
-    contrasena: datos.contrasena,
-    negocio: null,
-  };
+export async function iniciarSesion(correo: string, contrasena: string): Promise<ResultadoAcceso> {
+  const correoLimpio = correo.trim();
+  try {
+    const r = await api<TokenApi>("/auth/login", {
+      metodo: "POST",
+      cuerpo: { correo: correoLimpio, contrasena },
+      conToken: false,
+    });
+    if (!guardarToken(r.token)) return { ok: false, campo: "general", error: ERROR_ALMACENAMIENTO };
 
-  if (!escribir(CLAVE_USUARIOS, [...usuarios, nuevo]) || !escribir(CLAVE_SESION, correo)) {
-    return {
-      ok: false,
-      campo: "general",
-      error: "No pudimos guardar tu cuenta en este navegador. Revisa que no esté en modo privado.",
+    // El dueño siempre pasa por la lista de sistemas (aunque tenga uno solo);
+    // el personal entra directo al sistema donde trabaja.
+    const negocio = r.tipo === "PERSONAL" && r.sistema ? aNegocio(r.sistema) : null;
+
+    const usuario: Usuario = {
+      nombre: leerNombre(correoLimpio),
+      correo: correoLimpio,
+      tipo: r.tipo,
+      negocio,
     };
+    sesionEnCache = Promise.resolve(usuario);
+    return { ok: true, usuario };
+  } catch (e) {
+    borrarToken();
+    sesionEnCache = null;
+    return errorDeAcceso(e);
   }
-  return { ok: true, usuario: sinContrasena(nuevo) };
-}
-
-export function iniciarSesion(correo: string, contrasena: string): ResultadoAcceso {
-  const usuarios = leer<UsuarioRegistrado[]>(CLAVE_USUARIOS, []);
-  const encontrado = usuarios.find(
-    (u) => u.correo === normalizar(correo) && u.contrasena === contrasena,
-  );
-
-  if (!encontrado) {
-    return { ok: false, campo: "general", error: "Correo o contraseña incorrectos." };
-  }
-  escribir(CLAVE_SESION, encontrado.correo);
-  return { ok: true, usuario: sinContrasena(encontrado) };
-}
-
-export function obtenerSesion(): Usuario | null {
-  const correo = leer<string | null>(CLAVE_SESION, null);
-  if (!correo) return null;
-  const usuario = leer<UsuarioRegistrado[]>(CLAVE_USUARIOS, []).find((u) => u.correo === correo);
-  return usuario ? sinContrasena(usuario) : null;
 }
 
 export function cerrarSesion(): void {
+  borrarToken();
+  sesionEnCache = null;
+}
+
+/** Sistemas (negocios) del dueño. Solo lo puede pedir una cuenta de dueño. */
+export async function listarSistemas(): Promise<
+  { ok: true; sistemas: NegocioGuardado[] } | { ok: false; error: string }
+> {
   try {
-    window.localStorage.removeItem(CLAVE_SESION);
-  } catch {
-    /* sin acceso al almacenamiento: no hay sesión que cerrar */
+    const lista = await api<SistemaApi[]>("/sistemas");
+    return { ok: true, sistemas: lista.map(aNegocio) };
+  } catch (e) {
+    return { ok: false, error: mensajeDe(e) };
   }
 }
 
-/** Guarda el negocio del usuario con sesión iniciada. */
-export function guardarNegocio(negocio: NegocioGuardado): boolean {
-  const correo = leer<string | null>(CLAVE_SESION, null);
-  if (!correo) return false;
+/** Entra a un sistema: el backend devuelve un token nuevo ligado a él (POST /auth/sistema/{id}). */
+export async function seleccionarSistema(idsistema: number): Promise<ResultadoNegocio> {
+  try {
+    const t = await api<TokenApi>(`/auth/sistema/${idsistema}`, { metodo: "POST" });
+    if (!guardarToken(t.token)) return { ok: false, error: ERROR_ALMACENAMIENTO };
+    sesionEnCache = null; // la próxima lectura reconstruye la sesión con el sistema elegido
+    if (!t.sistema)
+      return { ok: false, error: "No pudimos abrir ese negocio. Inténtalo de nuevo." };
+    return { ok: true, negocio: aNegocio(t.sistema) };
+  } catch (e) {
+    return { ok: false, error: mensajeDe(e) };
+  }
+}
 
-  const usuarios = leer<UsuarioRegistrado[]>(CLAVE_USUARIOS, []);
-  const conNegocio = (n: NegocioGuardado) =>
-    usuarios.map((u) => (u.correo === correo ? { ...u, negocio: n } : u));
+/**
+ * Crea el negocio del dueño (POST /sistemas) y entra a él
+ * (POST /auth/sistema/{id}, que devuelve un token ligado a ese sistema).
+ */
+export async function guardarNegocio(datos: {
+  nombre: string;
+  logoUrl: string;
+  colorPrimario: string;
+  colorSecundario: string;
+}): Promise<ResultadoNegocio> {
+  let creado: SistemaApi;
+  try {
+    creado = await api<SistemaApi>("/sistemas", {
+      metodo: "POST",
+      cuerpo: {
+        nombrenegocio: datos.nombre.trim(),
+        colorprincipal: datos.colorPrimario,
+        colorsecundario: datos.colorSecundario,
+        logourl: datos.logoUrl.trim() || null,
+      },
+    });
+  } catch (e) {
+    return { ok: false, error: mensajeDe(e) };
+  }
 
-  if (escribir(CLAVE_USUARIOS, conNegocio(negocio))) return true;
-  // Un logo grande puede superar el límite del navegador: reintenta sin logo.
-  return escribir(CLAVE_USUARIOS, conNegocio({ ...negocio, logoDataUrl: null }));
+  sesionEnCache = null;
+  try {
+    const t = await api<TokenApi>(`/auth/sistema/${creado.idsistema}`, { metodo: "POST" });
+    guardarToken(t.token);
+  } catch {
+    // El negocio ya existe: al recargar, la sesión lo encuentra sola.
+    return {
+      ok: false,
+      error:
+        "Tu negocio se creó, pero no pudimos abrirlo. Búscalo en tu lista de sistemas para entrar.",
+    };
+  }
+  return { ok: true, negocio: aNegocio(creado) };
 }
 
 /* ------------------------------------------------------------
    Hooks y ayudas de navegación
    ------------------------------------------------------------ */
 
-export type DestinoAcceso = "/login" | "/registro" | "/panel";
+export type DestinoAcceso = "/login" | "/sistemas" | "/panel";
 
 /** Pantalla que corresponde según el estado del usuario. */
 export function destinoPara(usuario: Usuario | null): DestinoAcceso {
   if (!usuario) return "/login";
-  return usuario.negocio ? "/panel" : "/registro";
+  // El personal siempre trabaja dentro de su sistema; el dueño elige primero cuál abrir.
+  return usuario.negocio || usuario.tipo === "PERSONAL" ? "/panel" : "/sistemas";
 }
 
 /**
@@ -157,7 +295,14 @@ export function useSesion() {
   });
 
   useEffect(() => {
-    setEstado({ cargando: false, usuario: obtenerSesion() });
+    let vigente = true;
+    obtenerSesion()
+      .then((usuario) => vigente && setEstado({ cargando: false, usuario }))
+      // Sin conexión con el servidor: se muestra como sin sesión; el login explica el error.
+      .catch(() => vigente && setEstado({ cargando: false, usuario: null }));
+    return () => {
+      vigente = false;
+    };
   }, []);
 
   return estado;

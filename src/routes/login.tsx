@@ -147,6 +147,7 @@ function Login() {
   const [errores, setErrores] = useState<Errores>({});
   const [verContrasena, setVerContrasena] = useState(false);
   const [avisoGoogle, setAvisoGoogle] = useState(false);
+  const [enviando, setEnviando] = useState(false);
 
   const esLogin = vista === "login";
 
@@ -172,33 +173,30 @@ function Login() {
     setCampos((prev) => ({ ...camposVacios, correo: prev.correo }));
   };
 
-  const enviar = (e: React.FormEvent) => {
+  const enviar = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (enviando) return;
     const nuevosErrores = esLogin ? validarInicioSesion(campos) : validarRegistroCuenta(campos);
     if (Object.keys(nuevosErrores).length > 0) {
       setErrores(nuevosErrores);
       return;
     }
 
-    if (esLogin) {
-      const resultado = iniciarSesion(campos.correo, campos.contrasena);
-      if (!resultado.ok) {
-        setErrores({ [resultado.campo]: resultado.error });
-        return;
-      }
-      navigate({ to: destinoPara(resultado.usuario) });
-    } else {
-      const resultado = registrarUsuario({
-        nombre: campos.nombre,
-        correo: campos.correo,
-        contrasena: campos.contrasena,
-      });
-      if (!resultado.ok) {
-        setErrores({ [resultado.campo]: resultado.error });
-        return;
-      }
-      navigate({ to: "/registro" });
+    setEnviando(true);
+    const resultado = esLogin
+      ? await iniciarSesion(campos.correo, campos.contrasena)
+      : await registrarUsuario({
+          nombre: campos.nombre,
+          correo: campos.correo,
+          contrasena: campos.contrasena,
+        });
+    setEnviando(false);
+
+    if (!resultado.ok) {
+      setErrores({ [resultado.campo]: resultado.error });
+      return;
     }
+    navigate({ to: destinoPara(resultado.usuario) });
   };
 
   const botonContrasena = (
@@ -248,7 +246,7 @@ function Login() {
               <p className="mt-2 text-muted-foreground">
                 {esLogin
                   ? "Entra para seguir con tu sistema de inventario."
-                  : "Después de crear tu cuenta, registrarás tu negocio en 2 pasos."}
+                  : "Después de crear tu cuenta, registrarás tu negocio."}
               </p>
 
               <button
@@ -261,8 +259,7 @@ function Login() {
               </button>
               {avisoGoogle && (
                 <p role="status" className="mt-2 text-xs text-muted-foreground">
-                  El acceso con Google se activará cuando conectemos el servidor. Por ahora usa tu
-                  correo.
+                  El acceso con Google estará disponible pronto. Por ahora usa tu correo.
                 </p>
               )}
 
@@ -348,9 +345,10 @@ function Login() {
 
                 <button
                   type="submit"
-                  className="inline-flex w-full items-center justify-center rounded-full bg-primary px-8 py-3.5 text-base font-semibold text-primary-foreground shadow-lg shadow-primary/20 transition-all hover:-translate-y-0.5 hover:shadow-xl hover:shadow-primary/25"
+                  disabled={enviando}
+                  className="inline-flex w-full items-center justify-center rounded-full bg-primary px-8 py-3.5 text-base font-semibold text-primary-foreground shadow-lg shadow-primary/20 transition-all hover:-translate-y-0.5 hover:shadow-xl hover:shadow-primary/25 disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:translate-y-0"
                 >
-                  {esLogin ? "Iniciar sesión" : "Crear cuenta"}
+                  {enviando ? "Un momento…" : esLogin ? "Iniciar sesión" : "Crear cuenta"}
                 </button>
               </form>
 
@@ -375,7 +373,7 @@ function Login() {
             </h2>
             <p className="max-w-xs text-primary-foreground/85">
               {esLogin
-                ? "¿Aún no tienes cuenta? Créala y registra tu negocio en 2 pasos."
+                ? "¿Aún no tienes cuenta? Créala y registra tu negocio."
                 : "¿Ya tienes cuenta? Inicia sesión y sigue donde lo dejaste."}
             </p>
             <button

@@ -3,7 +3,7 @@ import { createRouter, rootRouteId } from "@tanstack/react-router";
 import { describe, expect, it } from "vitest";
 
 import { routeTree } from "@/routeTree.gen";
-import { validarPasoDatos, validarPasoIdentidad } from "@/routes/registro";
+import { validarPasoIdentidad } from "@/routes/registro";
 import type { DatosNegocio } from "@/routes/registro";
 
 // Match routes without running loaders or rendering: loaders may need a server or
@@ -28,14 +28,9 @@ describe("App routing", () => {
 
 const datosValidos: DatosNegocio = {
   nombre: "Bodega Doña María",
-  logo: null,
+  logoUrl: "",
   colorPrimario: "#2563eb",
   colorSecundario: "#16a34a",
-  rubro: "Bodega",
-  ruc: "",
-  direccion: "Av. Los Álamos 245",
-  distrito: "San Juan de Lurigancho",
-  telefono: "987654321",
 };
 
 describe("Validación del registro de negocio", () => {
@@ -45,17 +40,22 @@ describe("Validación del registro de negocio", () => {
     expect(validarPasoIdentidad(datosValidos)).not.toHaveProperty("nombre");
   });
 
-  it("valida el RUC opcional con 11 dígitos", () => {
-    expect(validarPasoDatos({ ...datosValidos, ruc: "12345" })).toHaveProperty("ruc");
-    expect(validarPasoDatos({ ...datosValidos, ruc: "20512345678" })).not.toHaveProperty("ruc");
+  it("limita el nombre a 255 caracteres (largo de la columna del backend)", () => {
+    expect(validarPasoIdentidad({ ...datosValidos, nombre: "a".repeat(256) })).toHaveProperty("nombre");
   });
 
-  it("exige un teléfono de 9 dígitos", () => {
-    expect(validarPasoDatos({ ...datosValidos, telefono: "98765432" })).toHaveProperty("telefono");
-    expect(validarPasoDatos({ ...datosValidos, telefono: "987654321" })).not.toHaveProperty("telefono");
+  it("el logo es opcional pero, si se escribe, debe ser un enlace http(s)", () => {
+    expect(validarPasoIdentidad({ ...datosValidos, logoUrl: "logo.png" })).toHaveProperty("logoUrl");
+    expect(validarPasoIdentidad({ ...datosValidos, logoUrl: "https://sitio.com/logo.png" })).not.toHaveProperty("logoUrl");
+    expect(validarPasoIdentidad(datosValidos)).not.toHaveProperty("logoUrl");
   });
 
-  it("los datos del paso 2 completos no producen errores", () => {
-    expect(Object.keys(validarPasoDatos(datosValidos))).toHaveLength(0);
+  it("el logo no puede superar los 255 caracteres", () => {
+    const largo = `https://sitio.com/${"a".repeat(250)}.png`;
+    expect(validarPasoIdentidad({ ...datosValidos, logoUrl: largo })).toHaveProperty("logoUrl");
+  });
+
+  it("datos completos y válidos no producen errores", () => {
+    expect(Object.keys(validarPasoIdentidad(datosValidos))).toHaveLength(0);
   });
 });

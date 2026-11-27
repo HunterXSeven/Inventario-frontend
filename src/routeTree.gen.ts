@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as PanelRouteImport } from './routes/panel'
 import { Route as RegistroRouteImport } from './routes/registro'
+import { Route as SistemasRouteImport } from './routes/sistemas'
 import { Route as VarianteBRouteImport } from './routes/variante-b'
 import { Route as VarianteCRouteImport } from './routes/variante-c'
 
@@ -36,6 +37,11 @@ const RegistroRoute = RegistroRouteImport.update({
   path: '/registro',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SistemasRoute = SistemasRouteImport.update({
+  id: '/sistemas',
+  path: '/sistemas',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const VarianteBRoute = VarianteBRouteImport.update({
   id: '/variante-b',
   path: '/variante-b',
@@ -52,6 +58,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/panel': typeof PanelRoute
   '/registro': typeof RegistroRoute
+  '/sistemas': typeof SistemasRoute
   '/variante-b': typeof VarianteBRoute
   '/variante-c': typeof VarianteCRoute
 }
@@ -60,6 +67,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/panel': typeof PanelRoute
   '/registro': typeof RegistroRoute
+  '/sistemas': typeof SistemasRoute
   '/variante-b': typeof VarianteBRoute
   '/variante-c': typeof VarianteCRoute
 }
@@ -69,21 +77,36 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/panel': typeof PanelRoute
   '/registro': typeof RegistroRoute
+  '/sistemas': typeof SistemasRoute
   '/variante-b': typeof VarianteBRoute
   '/variante-c': typeof VarianteCRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    '/' | '/login' | '/panel' | '/registro' | '/variante-b' | '/variante-c'
+    | '/'
+    | '/login'
+    | '/panel'
+    | '/registro'
+    | '/sistemas'
+    | '/variante-b'
+    | '/variante-c'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/login' | '/panel' | '/registro' | '/variante-b' | '/variante-c'
+  to:
+    | '/'
+    | '/login'
+    | '/panel'
+    | '/registro'
+    | '/sistemas'
+    | '/variante-b'
+    | '/variante-c'
   id:
     | '__root__'
     | '/'
     | '/login'
     | '/panel'
     | '/registro'
+    | '/sistemas'
     | '/variante-b'
     | '/variante-c'
   fileRoutesById: FileRoutesById
@@ -93,6 +116,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   PanelRoute: typeof PanelRoute
   RegistroRoute: typeof RegistroRoute
+  SistemasRoute: typeof SistemasRoute
   VarianteBRoute: typeof VarianteBRoute
   VarianteCRoute: typeof VarianteCRoute
 }
@@ -127,6 +151,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof RegistroRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/sistemas': {
+      id: '/sistemas'
+      path: '/sistemas'
+      fullPath: '/sistemas'
+      preLoaderRoute: typeof SistemasRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/variante-b': {
       id: '/variante-b'
       path: '/variante-b'
@@ -149,6 +180,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   PanelRoute: PanelRoute,
   RegistroRoute: RegistroRoute,
+  SistemasRoute: SistemasRoute,
   VarianteBRoute: VarianteBRoute,
   VarianteCRoute: VarianteCRoute,
 }

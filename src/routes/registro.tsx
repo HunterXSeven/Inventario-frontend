@@ -6,9 +6,7 @@ import {
   ArrowRight,
   Building2,
   CheckCircle2,
-  ImagePlus,
   PackageCheck,
-  Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { guardarNegocio, useSesion } from "@/lib/auth";
@@ -20,13 +18,13 @@ export const Route = createFileRoute("/registro")({
       {
         name: "description",
         content:
-          "Registra tu negocio en 2 pasos y CuadraStock preparará tu sistema de inventario personalizado. Empieza gratis, sin saber programar.",
+          "Registra tu negocio y CuadraStock preparará tu sistema de inventario personalizado. Empieza gratis, sin saber programar.",
       },
       { property: "og:title", content: "CuadraStock — Registra tu negocio" },
       {
         property: "og:description",
         content:
-          "Registra tu negocio en 2 pasos y empieza a controlar tu inventario. Gratis para empezar, sin tarjeta de crédito.",
+          "Registra tu negocio y empieza a controlar tu inventario. Gratis para empezar, sin tarjeta de crédito.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
@@ -39,33 +37,13 @@ export const Route = createFileRoute("/registro")({
    Modelo de datos del formulario
    ============================================================ */
 
-interface LogoNegocio {
-  nombreArchivo: string;
-  dataUrl: string;
-}
-
 export interface DatosNegocio {
-  // Paso 1: identidad del negocio
   nombre: string;
-  logo: LogoNegocio | null;
+  /** Enlace (URL) a una imagen; el backend guarda solo el enlace. Opcional. */
+  logoUrl: string;
   colorPrimario: string;
   colorSecundario: string;
-  // Paso 2: datos del negocio
-  rubro: string;
-  ruc: string;
-  direccion: string;
-  distrito: string;
-  telefono: string;
 }
-
-const RUBROS = [
-  "Bodega",
-  "Ferretería",
-  "Botica",
-  "Tienda de ropa",
-  "Librería",
-  "Otro",
-];
 
 const COLOR_PRIMARIO_PREDETERMINADO = "#2563eb";
 const COLOR_SECUNDARIO_PREDETERMINADO = "#16a34a";
@@ -89,9 +67,9 @@ const PRESELECCIONES_SECUNDARIO = [
 
 /**
  * Configuración de pasos del wizard.
- * Para agregar un paso nuevo (por ejemplo, "Configuración del inventario"),
- * añádelo a esta lista y crea su componente en `renderPaso`; la barra de
- * progreso y la navegación se ajustan solas.
+ * Para agregar un paso nuevo, añádelo a esta lista y crea su componente en
+ * `renderPaso`; la barra de progreso (que solo se muestra con 2 o más pasos)
+ * y la navegación se ajustan solas.
  */
 const pasosConfig = [
   {
@@ -99,25 +77,15 @@ const pasosConfig = [
     titulo: "Identidad del negocio",
     descripcion: "Cuéntanos cómo se llama tu negocio y cómo se verá.",
   },
-  {
-    id: "datos",
-    titulo: "Datos del negocio",
-    descripcion: "Unos datos básicos para dejar todo listo.",
-  },
 ] as const;
 
 type Errores = Record<string, string>;
 
 const datosIniciales: DatosNegocio = {
   nombre: "",
-  logo: null,
+  logoUrl: "",
   colorPrimario: COLOR_PRIMARIO_PREDETERMINADO,
   colorSecundario: COLOR_SECUNDARIO_PREDETERMINADO,
-  rubro: "",
-  ruc: "",
-  direccion: "",
-  distrito: "",
-  telefono: "",
 };
 
 /** Elige texto claro u oscuro según el fondo, para que el botón siempre se lea. */
@@ -136,28 +104,20 @@ function textoSobre(hex: string): string {
 
 export function validarPasoIdentidad(datos: DatosNegocio): Errores {
   const errores: Errores = {};
-  if (!datos.nombre.trim()) {
+  const nombre = datos.nombre.trim();
+  if (!nombre) {
     errores.nombre = "Ingresa el nombre de tu negocio.";
+  } else if (nombre.length > 255) {
+    errores.nombre = "El nombre no puede superar los 255 caracteres.";
   }
-  return errores;
-}
 
-export function validarPasoDatos(datos: DatosNegocio): Errores {
-  const errores: Errores = {};
-  if (!datos.rubro) {
-    errores.rubro = "Selecciona el rubro de tu negocio.";
-  }
-  if (datos.ruc && !/^\d{11}$/.test(datos.ruc)) {
-    errores.ruc = "El RUC debe tener 11 dígitos.";
-  }
-  if (!datos.direccion.trim()) {
-    errores.direccion = "Ingresa la dirección de tu negocio.";
-  }
-  if (!datos.distrito.trim()) {
-    errores.distrito = "Ingresa el distrito de tu negocio.";
-  }
-  if (!/^\d{9}$/.test(datos.telefono)) {
-    errores.telefono = "Ingresa un teléfono de 9 dígitos (ej. 987654321).";
+  const logo = datos.logoUrl.trim();
+  if (logo) {
+    if (!/^https?:\/\/\S+$/i.test(logo)) {
+      errores.logoUrl = "Escribe un enlace válido que empiece con http:// o https://.";
+    } else if (logo.length > 255) {
+      errores.logoUrl = "El enlace no puede superar los 255 caracteres.";
+    }
   }
   return errores;
 }
@@ -168,8 +128,6 @@ function validarPaso(indice: number, datos: DatosNegocio): Errores {
   switch (paso.id) {
     case "identidad":
       return validarPasoIdentidad(datos);
-    case "datos":
-      return validarPasoDatos(datos);
     default:
       return {};
   }
@@ -286,12 +244,10 @@ function PasoIdentidad({
   datos,
   errores,
   onCambiar,
-  onCambiarLogo,
 }: {
   datos: DatosNegocio;
   errores: Errores;
   onCambiar: <K extends keyof DatosNegocio>(campo: K, valor: DatosNegocio[K]) => void;
-  onCambiarLogo: (e: React.ChangeEvent<HTMLInputElement>) => void;
 }) {
   return (
     <div className="space-y-6">
@@ -309,46 +265,22 @@ function PasoIdentidad({
       </div>
 
       <div>
-        <Etiqueta opcional>Logo del negocio</Etiqueta>
-        {datos.logo ? (
-          <div className="mt-2 flex items-center gap-3 rounded-xl border border-border bg-background p-3">
-            <img
-              src={datos.logo.dataUrl}
-              alt="Logo del negocio"
-              className="size-14 rounded-lg border border-border object-cover"
-            />
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium text-foreground">
-                {datos.logo.nombreArchivo}
-              </p>
-              <button
-                type="button"
-                onClick={() => onCambiar("logo", null)}
-                className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-destructive hover:underline"
-              >
-                <Trash2 className="size-3.5" />
-                Quitar logo
-              </button>
-            </div>
-          </div>
-        ) : (
-          <label className="mt-2 flex cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed border-border bg-background px-4 py-6 text-center transition-colors hover:border-primary/40 hover:bg-muted/50">
-            <ImagePlus className="size-6 text-muted-foreground" />
-            <span className="text-sm font-medium text-foreground">
-              Subir logo (PNG o JPG, máx. 2 MB)
-            </span>
-            <span className="text-xs text-muted-foreground">
-              Haz clic para elegir un archivo
-            </span>
-            <input
-              type="file"
-              accept="image/png,image/jpeg"
-              className="hidden"
-              onChange={onCambiarLogo}
-            />
-          </label>
-        )}
-        {errores.logo && <MensajeError mensaje={errores.logo} />}
+        <Etiqueta htmlFor="logoUrl" opcional>
+          Logo del negocio (enlace)
+        </Etiqueta>
+        <input
+          id="logoUrl"
+          type="url"
+          inputMode="url"
+          placeholder="https://mi-negocio.com/logo.png"
+          value={datos.logoUrl}
+          onChange={(e) => onCambiar("logoUrl", e.target.value)}
+          className={cn("mt-2", claseInput(!!errores.logoUrl))}
+        />
+        <p className="mt-1.5 text-xs text-muted-foreground">
+          Pega el enlace de una imagen PNG o JPG que ya esté en internet.
+        </p>
+        {errores.logoUrl && <MensajeError mensaje={errores.logoUrl} />}
       </div>
 
       <div className="grid gap-6 sm:grid-cols-2">
@@ -370,125 +302,12 @@ function PasoIdentidad({
 }
 
 /* ============================================================
-   Paso 2 — Datos del negocio
-   ============================================================ */
-
-function PasoDatos({
-  datos,
-  errores,
-  onCambiar,
-  correo,
-}: {
-  correo: string;
-  datos: DatosNegocio;
-  errores: Errores;
-  onCambiar: <K extends keyof DatosNegocio>(campo: K, valor: DatosNegocio[K]) => void;
-}) {
-  const soloDigitos = (valor: string) => valor.replace(/\D/g, "");
-
-  return (
-    <div className="space-y-6">
-      <div>
-        <Etiqueta htmlFor="rubro">Rubro</Etiqueta>
-        <select
-          id="rubro"
-          value={datos.rubro}
-          onChange={(e) => onCambiar("rubro", e.target.value)}
-          className={cn("mt-2 appearance-none", claseInput(!!errores.rubro))}
-        >
-          <option value="">Selecciona el rubro…</option>
-          {RUBROS.map((rubro) => (
-            <option key={rubro} value={rubro}>
-              {rubro}
-            </option>
-          ))}
-        </select>
-        {errores.rubro && <MensajeError mensaje={errores.rubro} />}
-      </div>
-
-      <div>
-        <Etiqueta htmlFor="ruc" opcional>
-          RUC
-        </Etiqueta>
-        <input
-          id="ruc"
-          type="text"
-          inputMode="numeric"
-          maxLength={11}
-          placeholder="Ej. 20512345678"
-          value={datos.ruc}
-          onChange={(e) => onCambiar("ruc", soloDigitos(e.target.value).slice(0, 11))}
-          className={cn("mt-2", claseInput(!!errores.ruc))}
-        />
-        {errores.ruc && <MensajeError mensaje={errores.ruc} />}
-      </div>
-
-      <div className="grid gap-6 sm:grid-cols-2">
-        <div>
-          <Etiqueta htmlFor="direccion">Dirección</Etiqueta>
-          <input
-            id="direccion"
-            type="text"
-            placeholder="Ej. Av. Los Álamos 245"
-            value={datos.direccion}
-            onChange={(e) => onCambiar("direccion", e.target.value)}
-            className={cn("mt-2", claseInput(!!errores.direccion))}
-          />
-          {errores.direccion && <MensajeError mensaje={errores.direccion} />}
-        </div>
-        <div>
-          <Etiqueta htmlFor="distrito">Distrito</Etiqueta>
-          <input
-            id="distrito"
-            type="text"
-            placeholder="Ej. San Juan de Lurigancho"
-            value={datos.distrito}
-            onChange={(e) => onCambiar("distrito", e.target.value)}
-            className={cn("mt-2", claseInput(!!errores.distrito))}
-          />
-          {errores.distrito && <MensajeError mensaje={errores.distrito} />}
-        </div>
-      </div>
-
-      <div>
-        <Etiqueta htmlFor="telefono">Teléfono / WhatsApp</Etiqueta>
-        <input
-          id="telefono"
-          type="tel"
-          inputMode="numeric"
-          maxLength={9}
-          placeholder="Ej. 987654321"
-          value={datos.telefono}
-          onChange={(e) => onCambiar("telefono", soloDigitos(e.target.value).slice(0, 9))}
-          className={cn("mt-2", claseInput(!!errores.telefono))}
-        />
-        {errores.telefono && <MensajeError mensaje={errores.telefono} />}
-      </div>
-
-      <div>
-        <Etiqueta>Correo de contacto</Etiqueta>
-        <input
-          type="email"
-          value={correo}
-          readOnly
-          aria-readonly="true"
-          className="mt-2 w-full cursor-not-allowed rounded-xl border border-input bg-muted px-4 py-3 text-sm text-muted-foreground shadow-sm"
-        />
-        <p className="mt-1.5 text-xs text-muted-foreground">
-          Este es el correo de tu cuenta y no se puede editar.
-        </p>
-      </div>
-    </div>
-  );
-}
-
-/* ============================================================
    Panel de vista previa en vivo
    ============================================================ */
 
 function VistaPrevia({ datos }: { datos: DatosNegocio }) {
   const nombreMostrado = datos.nombre.trim() || "Tu negocio";
-  const rubroMostrado = datos.rubro || "Bodega";
+  const logo = datos.logoUrl.trim();
 
   return (
     <aside className="h-fit lg:sticky lg:top-24">
@@ -504,9 +323,9 @@ function VistaPrevia({ datos }: { datos: DatosNegocio }) {
         />
         <div className="p-5">
           <div className="flex items-center gap-3">
-            {datos.logo ? (
+            {logo ? (
               <img
-                src={datos.logo.dataUrl}
+                src={logo}
                 alt="Logo del negocio"
                 className="size-12 shrink-0 rounded-xl border border-border object-cover"
               />
@@ -525,7 +344,7 @@ function VistaPrevia({ datos }: { datos: DatosNegocio }) {
               <p className="truncate text-base font-semibold text-foreground">
                 {nombreMostrado}
               </p>
-              <p className="text-xs text-muted-foreground">{rubroMostrado}</p>
+              <p className="text-xs text-muted-foreground">Tu sistema de inventario</p>
             </div>
           </div>
           <button
@@ -556,7 +375,7 @@ function FilaResumen({ etiqueta, valor }: { etiqueta: string; valor: string }) {
   return (
     <div className="flex flex-col gap-0.5 border-b border-border/70 py-3 last:border-0 sm:flex-row sm:items-baseline sm:justify-between sm:gap-6">
       <dt className="text-sm text-muted-foreground">{etiqueta}</dt>
-      <dd className="text-sm font-medium text-foreground sm:text-right">{valor || "—"}</dd>
+      <dd className="text-sm font-medium text-foreground break-all sm:text-right">{valor || "—"}</dd>
     </div>
   );
 }
@@ -564,14 +383,20 @@ function FilaResumen({ etiqueta, valor }: { etiqueta: string; valor: string }) {
 function PantallaResumen({
   datos,
   correo,
+  guardando,
+  error,
   onVolverAEditar,
   onConfirmar,
 }: {
   datos: DatosNegocio;
   correo: string;
+  guardando: boolean;
+  error: string | null;
   onVolverAEditar: () => void;
   onConfirmar: () => void;
 }) {
+  const logo = datos.logoUrl.trim();
+
   return (
     <div className="mx-auto max-w-2xl">
       <div className="rounded-2xl border border-border bg-card p-6 shadow-sm sm:p-8">
@@ -583,9 +408,9 @@ function PantallaResumen({
         </p>
 
         <div className="mt-6 flex items-center gap-4 rounded-xl border border-border bg-background p-4">
-          {datos.logo ? (
+          {logo ? (
             <img
-              src={datos.logo.dataUrl}
+              src={logo}
               alt="Logo del negocio"
               className="size-14 shrink-0 rounded-xl border border-border object-cover"
             />
@@ -604,9 +429,10 @@ function PantallaResumen({
             <p className="truncate text-lg font-semibold text-foreground">
               {datos.nombre.trim() || "Tu negocio"}
             </p>
-            <p className="text-sm text-muted-foreground">{datos.rubro || "—"}</p>
+            <p className="text-sm text-muted-foreground">Tu sistema de inventario</p>
           </div>
-          <span className="ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold"
+          <span
+            className="ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold"
             style={{
               backgroundColor: `${datos.colorSecundario}1a`,
               color: textoSobre(datos.colorSecundario) === "#ffffff" ? datos.colorSecundario : "#1e293b",
@@ -622,21 +448,13 @@ function PantallaResumen({
 
         <dl className="mt-4">
           <FilaResumen etiqueta="Nombre del negocio" valor={datos.nombre.trim()} />
-          <FilaResumen etiqueta="Rubro" valor={datos.rubro} />
-          <FilaResumen etiqueta="RUC" valor={datos.ruc} />
-          <FilaResumen
-            etiqueta="Dirección"
-            valor={[datos.direccion.trim(), datos.distrito.trim()].filter(Boolean).join(", ")}
-          />
-          <FilaResumen etiqueta="Teléfono / WhatsApp" valor={datos.telefono} />
-          <FilaResumen etiqueta="Correo de contacto" valor={correo} />
+          <FilaResumen etiqueta="Logo" valor={logo} />
+          <FilaResumen etiqueta="Correo de la cuenta" valor={correo} />
         </dl>
 
         <div className="mt-4 flex items-center gap-3 rounded-xl bg-muted px-4 py-3">
           <span className="text-sm font-medium text-muted-foreground">Colores elegidos:</span>
-          <span
-            className="inline-flex items-center gap-1.5 text-xs text-foreground"
-          >
+          <span className="inline-flex items-center gap-1.5 text-xs text-foreground">
             <span
               className="size-4 rounded-full border border-border"
               style={{ backgroundColor: datos.colorPrimario }}
@@ -652,11 +470,22 @@ function PantallaResumen({
           </span>
         </div>
 
+        {error && (
+          <div
+            role="alert"
+            className="mt-6 flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"
+          >
+            <AlertCircle className="mt-0.5 size-4 shrink-0" />
+            {error}
+          </div>
+        )}
+
         <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:justify-end">
           <button
             type="button"
             onClick={onVolverAEditar}
-            className="inline-flex items-center justify-center gap-2 rounded-full border border-border bg-card px-6 py-3 text-sm font-semibold text-foreground shadow-sm transition-all hover:border-primary/40 hover:shadow-md"
+            disabled={guardando}
+            className="inline-flex items-center justify-center gap-2 rounded-full border border-border bg-card px-6 py-3 text-sm font-semibold text-foreground shadow-sm transition-all hover:border-primary/40 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60"
           >
             <ArrowLeft className="size-4" />
             Volver a editar
@@ -664,10 +493,11 @@ function PantallaResumen({
           <button
             type="button"
             onClick={onConfirmar}
-            className="inline-flex items-center justify-center gap-2 rounded-full bg-success px-6 py-3 text-sm font-semibold text-success-foreground shadow-lg shadow-success/25 transition-all hover:-translate-y-0.5 hover:shadow-xl hover:shadow-success/30"
+            disabled={guardando}
+            className="inline-flex items-center justify-center gap-2 rounded-full bg-success px-6 py-3 text-sm font-semibold text-success-foreground shadow-lg shadow-success/25 transition-all hover:-translate-y-0.5 hover:shadow-xl hover:shadow-success/30 disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:translate-y-0"
           >
-            Confirmar y registrar
-            <ArrowRight className="size-4" />
+            {guardando ? "Guardando…" : "Confirmar y registrar"}
+            {!guardando && <ArrowRight className="size-4" />}
           </button>
         </div>
       </div>
@@ -720,16 +550,18 @@ function Registro() {
   const [pasoActual, setPasoActual] = useState(0);
   const [datos, setDatos] = useState<DatosNegocio>(datosIniciales);
   const [errores, setErrores] = useState<Errores>({});
+  const [guardando, setGuardando] = useState(false);
+  const [errorGuardar, setErrorGuardar] = useState<string | null>(null);
 
   const navigate = useNavigate();
   const { cargando, usuario } = useSesion();
 
-  // Ruta protegida: sin sesión va a /login; si ya registró su negocio, va al panel.
+  // Ruta protegida: sin sesión va a /login; el personal no crea sistemas y va a su panel.
   // Solo se evalúa al cargar la sesión, para no saltarse la pantalla de éxito.
   useEffect(() => {
     if (cargando) return;
     if (!usuario) navigate({ to: "/login", replace: true });
-    else if (usuario.negocio) navigate({ to: "/panel", replace: true });
+    else if (usuario.tipo === "PERSONAL") navigate({ to: "/panel", replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cargando]);
   const formularioRef = useRef<HTMLDivElement>(null);
@@ -744,36 +576,6 @@ function Registro() {
 
   const setDato = <K extends keyof DatosNegocio>(campo: K, valor: DatosNegocio[K]) => {
     setDatos((prev) => ({ ...prev, [campo]: valor }));
-  };
-
-  const onCambiarLogo = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const archivo = e.target.files?.[0];
-    e.target.value = "";
-    if (!archivo) return;
-
-    const formatosAceptados = ["image/png", "image/jpeg"];
-    if (!formatosAceptados.includes(archivo.type)) {
-      setErrores((prev) => ({ ...prev, logo: "Solo se aceptan imágenes PNG o JPG." }));
-      return;
-    }
-    if (archivo.size > 2 * 1024 * 1024) {
-      setErrores((prev) => ({
-        ...prev,
-        logo: "La imagen supera el máximo de 2 MB. Elige una más liviana.",
-      }));
-      return;
-    }
-
-    const lector = new FileReader();
-    lector.onload = () => {
-      setErrores((prev) => {
-        const resto = { ...prev };
-        delete resto.logo;
-        return resto;
-      });
-      setDato("logo", { nombreArchivo: archivo.name, dataUrl: String(lector.result) });
-    };
-    lector.readAsDataURL(archivo);
   };
 
   const avanzar = () => {
@@ -801,27 +603,31 @@ function Registro() {
     if (!paso) return null;
     switch (paso.id) {
       case "identidad":
-        return (
-          <PasoIdentidad
-            datos={datos}
-            errores={errores}
-            onCambiar={setDato}
-            onCambiarLogo={onCambiarLogo}
-          />
-        );
-      case "datos":
-        return <PasoDatos
-            datos={datos}
-            errores={errores}
-            onCambiar={setDato}
-            correo={usuario?.correo ?? ""}
-          />;
+        return <PasoIdentidad datos={datos} errores={errores} onCambiar={setDato} />;
       default:
         return null;
     }
   }
 
-  if (cargando || !usuario || usuario.negocio) {
+  const confirmar = async () => {
+    if (guardando) return;
+    setGuardando(true);
+    setErrorGuardar(null);
+    const resultado = await guardarNegocio({
+      nombre: datos.nombre,
+      logoUrl: datos.logoUrl,
+      colorPrimario: datos.colorPrimario,
+      colorSecundario: datos.colorSecundario,
+    });
+    setGuardando(false);
+    if (!resultado.ok) {
+      setErrorGuardar(resultado.error);
+      return;
+    }
+    setFase("exito");
+  };
+
+  if (cargando || !usuario || usuario.tipo !== "DUENO") {
     return <div className="min-h-screen bg-background" aria-busy="true" />;
   }
 
@@ -836,11 +642,11 @@ function Registro() {
             </span>
           </Link>
           <Link
-            to="/"
+            to="/sistemas"
             className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
           >
             <ArrowLeft className="size-4" />
-            Volver al inicio
+            Volver a mis sistemas
           </Link>
         </div>
       </header>
@@ -853,58 +659,60 @@ function Registro() {
                 Registra tu negocio
               </h1>
               <p className="mt-3 text-lg text-muted-foreground">
-                En 2 pasos dejamos lista la identidad de tu negocio para armar tu
-                sistema de inventario.
+                Dejamos lista la identidad de tu negocio para armar tu sistema de
+                inventario.
               </p>
             </div>
 
-            {/* Barra de progreso */}
-            <div className="mx-auto mt-8 max-w-2xl rounded-2xl border border-border bg-card p-5 shadow-sm">
-              <div className="flex items-center justify-between text-sm font-medium text-foreground">
-                <span>
-                  Paso {pasoActual + 1} de {totalPasos}
-                </span>
-                <span className="text-muted-foreground">{porcentaje}% completado</span>
+            {/* Barra de progreso: solo tiene sentido con 2 o más pasos */}
+            {totalPasos > 1 && (
+              <div className="mx-auto mt-8 max-w-2xl rounded-2xl border border-border bg-card p-5 shadow-sm">
+                <div className="flex items-center justify-between text-sm font-medium text-foreground">
+                  <span>
+                    Paso {pasoActual + 1} de {totalPasos}
+                  </span>
+                  <span className="text-muted-foreground">{porcentaje}% completado</span>
+                </div>
+                <div className="mt-2.5 h-2 overflow-hidden rounded-full bg-muted">
+                  <div
+                    className="h-full rounded-full bg-primary transition-all duration-500"
+                    style={{ width: `${porcentaje}%` }}
+                  />
+                </div>
+                <ol className="mt-4 grid grid-cols-2 gap-2">
+                  {pasosConfig.map((paso, i) => {
+                    const completado = i < pasoActual;
+                    const activo = i === pasoActual;
+                    return (
+                      <li key={paso.id} className="flex items-center gap-2 text-sm">
+                        <span
+                          className={cn(
+                            "grid size-6 shrink-0 place-items-center rounded-full text-xs font-bold transition-colors",
+                            completado
+                              ? "bg-success text-success-foreground"
+                              : activo
+                                ? "bg-primary text-primary-foreground"
+                                : "bg-muted text-muted-foreground",
+                          )}
+                        >
+                          {completado ? <CheckCircle2 className="size-4" /> : i + 1}
+                        </span>
+                        <span
+                          className={cn(
+                            "truncate",
+                            activo
+                              ? "font-semibold text-foreground"
+                              : "text-muted-foreground",
+                          )}
+                        >
+                          {paso.titulo}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ol>
               </div>
-              <div className="mt-2.5 h-2 overflow-hidden rounded-full bg-muted">
-                <div
-                  className="h-full rounded-full bg-primary transition-all duration-500"
-                  style={{ width: `${porcentaje}%` }}
-                />
-              </div>
-              <ol className="mt-4 grid grid-cols-2 gap-2">
-                {pasosConfig.map((paso, i) => {
-                  const completado = i < pasoActual;
-                  const activo = i === pasoActual;
-                  return (
-                    <li key={paso.id} className="flex items-center gap-2 text-sm">
-                      <span
-                        className={cn(
-                          "grid size-6 shrink-0 place-items-center rounded-full text-xs font-bold transition-colors",
-                          completado
-                            ? "bg-success text-success-foreground"
-                            : activo
-                              ? "bg-primary text-primary-foreground"
-                              : "bg-muted text-muted-foreground",
-                        )}
-                      >
-                        {completado ? <CheckCircle2 className="size-4" /> : i + 1}
-                      </span>
-                      <span
-                        className={cn(
-                          "truncate",
-                          activo
-                            ? "font-semibold text-foreground"
-                            : "text-muted-foreground",
-                        )}
-                      >
-                        {paso.titulo}
-                      </span>
-                    </li>
-                  );
-                })}
-              </ol>
-            </div>
+            )}
 
             {/* Formulario + vista previa */}
             <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_340px]">
@@ -963,24 +771,14 @@ function Registro() {
           <PantallaResumen
             datos={datos}
             correo={usuario.correo}
+            guardando={guardando}
+            error={errorGuardar}
             onVolverAEditar={() => {
+              setErrorGuardar(null);
               setFase("pasos");
               setPasoActual(totalPasos - 1);
             }}
-            onConfirmar={() => {
-              guardarNegocio({
-                nombre: datos.nombre.trim(),
-                logoDataUrl: datos.logo?.dataUrl ?? null,
-                colorPrimario: datos.colorPrimario,
-                colorSecundario: datos.colorSecundario,
-                rubro: datos.rubro,
-                ruc: datos.ruc.trim(),
-                direccion: datos.direccion.trim(),
-                distrito: datos.distrito.trim(),
-                telefono: datos.telefono,
-              });
-              setFase("exito");
-            }}
+            onConfirmar={confirmar}
           />
         )}
 

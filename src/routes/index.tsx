@@ -215,7 +215,7 @@ const pasos = [
     icon: LogIn,
     titulo: "Crea tu cuenta",
     texto:
-      "Regístrate con tu correo en un minuto, sin trámites largos. Luego registras tu negocio en 2 pasos.",
+      "Regístrate con tu correo en un minuto, sin trámites largos. Luego registras tu negocio.",
   },
   {
     icon: SlidersHorizontal,
