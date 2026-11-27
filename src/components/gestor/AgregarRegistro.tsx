@@ -1,0 +1,597 @@
+import { useEffect, useState } from "react";
+import type { FormEvent, ReactNode } from "react";
+import { Plus, Trash2 } from "lucide-react";
+import { AlertaError, claseInput } from "@/components/gestor/comunes";
+import { mensajeDeError } from "@/lib/gestor";
+import type { Campo, Modulo } from "@/lib/gestor";
+import {
+  TIPOS_MOVIMIENTO,
+  aNumero,
+  claveCampo,
+  crearMovimiento,
+  crearProducto,
+  crearRegistro,
+  crearVenta,
+  listarProductosParaElegir,
+  totalEstimado,
+  validarMovimiento,
+  validarProducto,
+  validarRegistro,
+  validarVenta,
+} from "@/lib/registros";
+import type {
+  LineaVenta,
+  OpcionProducto,
+  TipoMovimiento,
+  Valores,
+  Validacion,
+} from "@/lib/registros";
+
+function Etiqueta({
+  texto,
+  obligatorio,
+  children,
+}: {
+  texto: string;
+  obligatorio?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <label className="block text-sm">
+      <span className="mb-1 block font-medium text-foreground">
+        {texto}
+        {obligatorio && <span className="text-destructive"> *</span>}
+      </span>
+      {children}
+    </label>
+  );
+}
+
+const soles = (n: number) => `S/ ${n.toFixed(2)}`;
+
+/* ------------------------------------------------------------
+   Contenedor: la fila "Agregar registro" y el formulario que abre
+   ------------------------------------------------------------ */
+
+export function AgregarRegistro({
+  modulo,
+  campos,
+  onCreado,
+  onSesionVencida,
+}: {
+  modulo: Modulo;
+  campos: Campo[];
+  /** Se llama tras guardar, para recargar la tabla. */
+  onCreado: () => void;
+  onSesionVencida: (e: unknown) => boolean;
+}) {
+  const [abierto, setAbierto] = useState(false);
+  const [aviso, setAviso] = useState<string | null>(null);
+
+  if (!abierto) {
+    return (
+      <div className="border-t border-border">
+        {aviso && (
+          <p role="status" className="px-4 pt-3 text-sm font-medium text-primary">
+            {aviso}
+          </p>
+        )}
+        <button
+          type="button"
+          onClick={() => {
+            setAviso(null);
+            setAbierto(true);
+          }}
+          className="flex w-full items-center gap-2 px-4 py-3 text-sm font-semibold text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground"
+        >
+          <Plus className="size-4" />
+          Agregar registro
+        </button>
+      </div>
+    );
+  }
+
+  const terminar = (mensaje: string | null) => {
+    setAbierto(false);
+    setAviso(mensaje);
+    if (mensaje) onCreado();
+  };
+
+  return (
+    <div className="border-t border-border bg-muted/20 px-4 py-5 sm:px-6">
+      <h2 className="text-base font-semibold text-foreground">Nuevo registro en {modulo.nombre}</h2>
+      <div className="mt-4">
+        {modulo.predefinido === "productos" ? (
+          <FormProducto
+            campos={campos}
+            onListo={() => terminar("Producto agregado.")}
+            onCancelar={() => terminar(null)}
+            onSesionVencida={onSesionVencida}
+          />
+        ) : modulo.predefinido === "movimientos" ? (
+          <FormMovimiento
+            onListo={() => terminar("Movimiento registrado.")}
+            onCancelar={() => terminar(null)}
+            onSesionVencida={onSesionVencida}
+          />
+        ) : modulo.predefinido === "ventas" ? (
+          <FormVenta
+            clienteVisible={campos.some((c) => c.columna === "cliente")}
+            onListo={() => terminar("Venta registrada.")}
+            onCancelar={() => terminar(null)}
+            onSesionVencida={onSesionVencida}
+          />
+        ) : (
+          <FormPersonalizado
+            modulo={modulo}
+            campos={campos}
+            onListo={() => terminar("Registro agregado.")}
+            onCancelar={() => terminar(null)}
+            onSesionVencida={onSesionVencida}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------
+   Piezas comunes de los formularios
+   ------------------------------------------------------------ */
+
+interface PropsForm {
+  onListo: () => void;
+  onCancelar: () => void;
+  /** Devuelve true si el error era de sesión vencida (ya se maneja fuera). */
+  onSesionVencida: (e: unknown) => boolean;
+}
+
+/** Estado y envío compartidos: valida, muestra errores y evita el doble clic. */
+function useEnvio({ onListo, onSesionVencida }: PropsForm) {
+  const [error, setError] = useState<string | null>(null);
+  const [enviando, setEnviando] = useState(false);
+
+  const enviar = async (validacion: Validacion, accion: () => Promise<void>) => {
+    if (enviando) return;
+    if (!validacion.ok) {
+      setError(validacion.error);
+      return;
+    }
+    setError(null);
+    setEnviando(true);
+    try {
+      await accion();
+      onListo();
+    } catch (e) {
+      setEnviando(false);
+      if (!onSesionVencida(e)) setError(mensajeDeError(e));
+    }
+  };
+
+  return { error, enviando, enviar };
+}
+
+function Botones({ enviando, onCancelar }: { enviando: boolean; onCancelar: () => void }) {
+  return (
+    <div className="flex flex-wrap items-center gap-3 pt-2">
+      <button
+        type="submit"
+        disabled={enviando}
+        className="rounded-full bg-primary px-6 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+      >
+        {enviando ? "Guardando…" : "Guardar"}
+      </button>
+      <button
+        type="button"
+        onClick={onCancelar}
+        disabled={enviando}
+        className="rounded-full border border-border bg-card px-6 py-2.5 text-sm font-semibold text-foreground transition-colors hover:border-primary/40 disabled:opacity-60"
+      >
+        Cancelar
+      </button>
+    </div>
+  );
+}
+
+function CampoEntrada({
+  campo,
+  valor,
+  onCambio,
+  nombreClave,
+}: {
+  campo: Campo;
+  valor: string;
+  onCambio: (v: string) => void;
+  nombreClave: string;
+}) {
+  const tipo =
+    campo.tipo === "fecha"
+      ? "date"
+      : campo.tipo === "numero" || campo.tipo === "decimal" || campo.columna === "precio"
+        ? "number"
+        : campo.tipo === "imagen"
+          ? "url"
+          : "text";
+  const paso =
+    campo.tipo === "decimal" || campo.columna === "precio"
+      ? "0.01"
+      : tipo === "number"
+        ? "1"
+        : undefined;
+  return (
+    <Etiqueta texto={campo.nombre} obligatorio={campo.columna === "nombreProducto"}>
+      <input
+        name={nombreClave}
+        type={tipo}
+        step={paso}
+        min={tipo === "number" && campo.columna !== null ? 0 : undefined}
+        inputMode={tipo === "number" ? "decimal" : undefined}
+        placeholder={campo.tipo === "imagen" ? "https://…" : undefined}
+        value={valor}
+        onChange={(e) => onCambio(e.target.value)}
+        className={claseInput}
+      />
+    </Etiqueta>
+  );
+}
+
+function RejillaCampos({
+  campos,
+  valores,
+  clave,
+  onCambio,
+}: {
+  campos: Campo[];
+  valores: Valores;
+  clave: (c: Campo) => string;
+  onCambio: (clave: string, valor: string) => void;
+}) {
+  return (
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {campos.map((c) => (
+        <CampoEntrada
+          key={c.id}
+          campo={c}
+          nombreClave={clave(c)}
+          valor={valores[clave(c)] ?? ""}
+          onCambio={(v) => onCambio(clave(c), v)}
+        />
+      ))}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------
+   Productos
+   ------------------------------------------------------------ */
+
+function FormProducto({ campos, ...props }: PropsForm & { campos: Campo[] }) {
+  const [valores, setValores] = useState<Valores>({});
+  const { error, enviando, enviar } = useEnvio(props);
+
+  const alEnviar = (e: FormEvent) => {
+    e.preventDefault();
+    void enviar(validarProducto(campos, valores), () => crearProducto(campos, valores));
+  };
+
+  return (
+    <form onSubmit={alEnviar} noValidate className="space-y-4">
+      <RejillaCampos
+        campos={campos}
+        valores={valores}
+        clave={claveCampo}
+        onCambio={(k, v) => setValores((a) => ({ ...a, [k]: v }))}
+      />
+      {error && <AlertaError mensaje={error} />}
+      <Botones enviando={enviando} onCancelar={props.onCancelar} />
+    </form>
+  );
+}
+
+/* ------------------------------------------------------------
+   Productos para elegir (compartido por movimientos y ventas)
+   ------------------------------------------------------------ */
+
+type Productos =
+  | { estado: "cargando" }
+  | { estado: "error"; mensaje: string }
+  | { estado: "listo"; lista: OpcionProducto[] };
+
+function useProductos(onSesionVencida: (e: unknown) => boolean): Productos {
+  const [productos, setProductos] = useState<Productos>({ estado: "cargando" });
+  useEffect(() => {
+    let vigente = true;
+    listarProductosParaElegir()
+      .then((lista) => vigente && setProductos({ estado: "listo", lista }))
+      .catch((e: unknown) => {
+        if (!vigente || onSesionVencida(e)) return;
+        setProductos({ estado: "error", mensaje: mensajeDeError(e) });
+      });
+    return () => {
+      vigente = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return productos;
+}
+
+function SinProductos({ productos }: { productos: Productos }) {
+  if (productos.estado === "cargando")
+    return <p className="text-sm text-muted-foreground">Cargando productos…</p>;
+  if (productos.estado === "error") return <AlertaError mensaje={productos.mensaje} />;
+  if (productos.lista.length === 0)
+    return (
+      <p className="text-sm text-muted-foreground">
+        Primero agrega al menos un producto en el módulo Productos.
+      </p>
+    );
+  return null;
+}
+
+function SelectorProducto({
+  valor,
+  lista,
+  onCambio,
+  etiqueta,
+}: {
+  valor: string;
+  lista: OpcionProducto[];
+  onCambio: (v: string) => void;
+  etiqueta: string;
+}) {
+  return (
+    <select
+      aria-label={etiqueta}
+      value={valor}
+      onChange={(e) => onCambio(e.target.value)}
+      className={claseInput}
+    >
+      <option value="">Elige un producto…</option>
+      {lista.map((p) => (
+        <option key={p.id} value={String(p.id)}>
+          {p.nombre}
+          {p.stock !== null ? ` (stock ${p.stock})` : ""}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+/* ------------------------------------------------------------
+   Movimientos
+   ------------------------------------------------------------ */
+
+function FormMovimiento(props: PropsForm) {
+  const productos = useProductos(props.onSesionVencida);
+  const [idproducto, setIdproducto] = useState("");
+  const [tipo, setTipo] = useState<TipoMovimiento>("Entrada");
+  const [cantidad, setCantidad] = useState("");
+  const [motivo, setMotivo] = useState("");
+  const { error, enviando, enviar } = useEnvio(props);
+
+  const datos = { idproducto, tipo, cantidad, motivo };
+  const alEnviar = (e: FormEvent) => {
+    e.preventDefault();
+    void enviar(validarMovimiento(datos), () => crearMovimiento(datos));
+  };
+
+  const hayProductos = productos.estado === "listo" && productos.lista.length > 0;
+
+  return (
+    <form onSubmit={alEnviar} noValidate className="space-y-4">
+      <SinProductos productos={productos} />
+      {hayProductos && (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <Etiqueta texto="Producto" obligatorio>
+            <SelectorProducto
+              etiqueta="Producto"
+              valor={idproducto}
+              lista={productos.lista}
+              onCambio={setIdproducto}
+            />
+          </Etiqueta>
+          <Etiqueta texto="Tipo" obligatorio>
+            <select
+              aria-label="Tipo"
+              value={tipo}
+              onChange={(e) => setTipo(e.target.value as TipoMovimiento)}
+              className={claseInput}
+            >
+              {TIPOS_MOVIMIENTO.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+          </Etiqueta>
+          <Etiqueta texto={tipo === "Ajuste" ? "Stock resultante" : "Cantidad"} obligatorio>
+            <input
+              type="number"
+              min={0}
+              step={1}
+              aria-label={tipo === "Ajuste" ? "Stock resultante" : "Cantidad"}
+              value={cantidad}
+              onChange={(e) => setCantidad(e.target.value)}
+              className={claseInput}
+            />
+          </Etiqueta>
+          <Etiqueta texto="Motivo">
+            <input
+              type="text"
+              aria-label="Motivo"
+              maxLength={100}
+              value={motivo}
+              onChange={(e) => setMotivo(e.target.value)}
+              className={claseInput}
+            />
+          </Etiqueta>
+        </div>
+      )}
+      {hayProductos && tipo === "Ajuste" && (
+        <p className="text-xs text-muted-foreground">
+          En un ajuste indicas cuántas unidades quedan en total, no cuántas suman o restan.
+        </p>
+      )}
+      {error && <AlertaError mensaje={error} />}
+      <Botones enviando={enviando} onCancelar={props.onCancelar} />
+    </form>
+  );
+}
+
+/* ------------------------------------------------------------
+   Ventas
+   ------------------------------------------------------------ */
+
+function FormVenta({ clienteVisible, ...props }: PropsForm & { clienteVisible: boolean }) {
+  const productos = useProductos(props.onSesionVencida);
+  const [cliente, setCliente] = useState("");
+  const [lineas, setLineas] = useState<LineaVenta[]>([{ idproducto: "", cantidad: "1" }]);
+  const { error, enviando, enviar } = useEnvio(props);
+
+  const cambiarLinea = (i: number, cambio: Partial<LineaVenta>) =>
+    setLineas((ls) => ls.map((l, j) => (j === i ? { ...l, ...cambio } : l)));
+
+  const alEnviar = (e: FormEvent) => {
+    e.preventDefault();
+    void enviar(validarVenta(cliente, lineas), () => crearVenta(cliente, lineas));
+  };
+
+  const hayProductos = productos.estado === "listo" && productos.lista.length > 0;
+  const total = hayProductos ? totalEstimado(lineas, productos.lista) : 0;
+
+  return (
+    <form onSubmit={alEnviar} noValidate className="space-y-4">
+      <SinProductos productos={productos} />
+      {hayProductos && (
+        <>
+          {clienteVisible && (
+            <div className="max-w-sm">
+              <Etiqueta texto="Cliente">
+                <input
+                  type="text"
+                  aria-label="Cliente"
+                  maxLength={100}
+                  value={cliente}
+                  onChange={(e) => setCliente(e.target.value)}
+                  className={claseInput}
+                />
+              </Etiqueta>
+            </div>
+          )}
+
+          <div className="space-y-3">
+            {lineas.map((l, i) => {
+              const p = productos.lista.find((x) => String(x.id) === l.idproducto);
+              const n = aNumero(l.cantidad);
+              return (
+                <div key={i} className="flex flex-wrap items-end gap-3">
+                  <div className="min-w-[14rem] flex-1">
+                    <Etiqueta texto={i === 0 ? "Producto" : ""}>
+                      <SelectorProducto
+                        etiqueta={`Producto ${i + 1}`}
+                        valor={l.idproducto}
+                        lista={productos.lista}
+                        onCambio={(v) => cambiarLinea(i, { idproducto: v })}
+                      />
+                    </Etiqueta>
+                  </div>
+                  <div className="w-28">
+                    <Etiqueta texto={i === 0 ? "Cantidad" : ""}>
+                      <input
+                        type="number"
+                        min={1}
+                        step={1}
+                        aria-label={`Cantidad ${i + 1}`}
+                        value={l.cantidad}
+                        onChange={(e) => cambiarLinea(i, { cantidad: e.target.value })}
+                        className={claseInput}
+                      />
+                    </Etiqueta>
+                  </div>
+                  <p className="w-24 pb-2 text-right text-sm text-muted-foreground">
+                    {p && p.precio !== null && n !== null && n > 0 ? soles(p.precio * n) : "—"}
+                  </p>
+                  <button
+                    type="button"
+                    title="Quitar línea"
+                    aria-label={`Quitar línea ${i + 1}`}
+                    disabled={lineas.length === 1}
+                    onClick={() => setLineas((ls) => ls.filter((_, j) => j !== i))}
+                    className="mb-0.5 grid size-9 place-items-center rounded-lg border border-border bg-card text-muted-foreground transition-colors enabled:hover:border-destructive/40 enabled:hover:text-destructive disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    <Trash2 className="size-4" />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <button
+              type="button"
+              onClick={() => setLineas((ls) => [...ls, { idproducto: "", cantidad: "1" }])}
+              className="inline-flex items-center gap-1.5 text-sm font-semibold text-primary"
+            >
+              <Plus className="size-4" />
+              Agregar otro producto
+            </button>
+            <p className="text-sm text-muted-foreground">
+              Total estimado: <span className="font-semibold text-foreground">{soles(total)}</span>
+              <span className="ml-1 text-xs">(el total final lo calcula el sistema)</span>
+            </p>
+          </div>
+        </>
+      )}
+      {error && <AlertaError mensaje={error} />}
+      <Botones enviando={enviando} onCancelar={props.onCancelar} />
+    </form>
+  );
+}
+
+/* ------------------------------------------------------------
+   Módulos personalizados
+   ------------------------------------------------------------ */
+
+function FormPersonalizado({
+  modulo,
+  campos,
+  ...props
+}: PropsForm & { modulo: Modulo; campos: Campo[] }) {
+  const [valores, setValores] = useState<Valores>({});
+  const { error, enviando, enviar } = useEnvio(props);
+
+  const alEnviar = (e: FormEvent) => {
+    e.preventDefault();
+    void enviar(validarRegistro(campos, valores), () => crearRegistro(modulo.id, campos, valores));
+  };
+
+  if (campos.length === 0) {
+    return (
+      <div className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          Este módulo todavía no tiene campos. Agrégalos desde Configurar.
+        </p>
+        <button
+          type="button"
+          onClick={props.onCancelar}
+          className="rounded-full border border-border bg-card px-6 py-2.5 text-sm font-semibold text-foreground transition-colors hover:border-primary/40"
+        >
+          Cerrar
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <form onSubmit={alEnviar} noValidate className="space-y-4">
+      <RejillaCampos
+        campos={campos}
+        valores={valores}
+        clave={(c) => `c${c.id}`}
+        onCambio={(k, v) => setValores((a) => ({ ...a, [k]: v }))}
+      />
+      {error && <AlertaError mensaje={error} />}
+      <Botones enviando={enviando} onCancelar={props.onCancelar} />
+    </form>
+  );
+}

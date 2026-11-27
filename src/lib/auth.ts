@@ -21,11 +21,28 @@ export interface NegocioGuardado {
   colorSecundario: string;
 }
 
+/** Lo que una cuenta de personal puede hacer en un módulo. */
+export interface Permiso {
+  idmodulo: number;
+  ver: boolean;
+  crear: boolean;
+  editar: boolean;
+  eliminar: boolean;
+}
+
 export interface Usuario {
   nombre: string;
   correo: string;
   tipo: "DUENO" | "PERSONAL";
   negocio: NegocioGuardado | null;
+  /** Solo para PERSONAL: el dueño puede hacer todo. */
+  permisos: Permiso[];
+}
+
+/** El dueño siempre puede; el personal, solo si su permiso del módulo lo marca. */
+export function puedeCrearEn(usuario: Usuario, idmodulo: number): boolean {
+  if (usuario.tipo === "DUENO") return true;
+  return usuario.permisos.some((p) => p.idmodulo === idmodulo && p.crear);
 }
 
 export type ResultadoAcceso =
@@ -56,6 +73,15 @@ interface YoApi {
   correo: string;
   tipo: "DUENO" | "PERSONAL";
   idsistema: number | null;
+  permisos?: PermisoApi[] | null;
+}
+
+interface PermisoApi {
+  idmodulo: number;
+  puedever: boolean;
+  puedecrear: boolean;
+  puedeeditar: boolean;
+  puedeeliminar: boolean;
 }
 
 const aNegocio = (s: SistemaApi): NegocioGuardado => ({
@@ -127,7 +153,14 @@ async function cargarSesion(): Promise<Usuario> {
     }
   }
 
-  return { nombre: leerNombre(yo.correo), correo: yo.correo, tipo: yo.tipo, negocio };
+  const permisos = (yo.permisos ?? []).map((p) => ({
+    idmodulo: p.idmodulo,
+    ver: p.puedever,
+    crear: p.puedecrear,
+    editar: p.puedeeditar,
+    eliminar: p.puedeeliminar,
+  }));
+  return { nombre: leerNombre(yo.correo), correo: yo.correo, tipo: yo.tipo, negocio, permisos };
 }
 
 /** Usuario con sesión iniciada, o null si no hay sesión (o ya venció). */
@@ -163,7 +196,7 @@ export async function registrarUsuario(datos: {
     const nombre = datos.nombre.trim();
     guardarNombre(correo, nombre);
     // Una cuenta recién creada todavía no tiene negocio.
-    const usuario: Usuario = { nombre, correo, tipo: r.tipo, negocio: null };
+    const usuario: Usuario = { nombre, correo, tipo: r.tipo, negocio: null, permisos: [] };
     sesionEnCache = Promise.resolve(usuario);
     return { ok: true, usuario };
   } catch (e) {
@@ -190,8 +223,11 @@ export async function iniciarSesion(correo: string, contrasena: string): Promise
       correo: correoLimpio,
       tipo: r.tipo,
       negocio,
+      // El login no trae permisos: se cargan con /auth/yo al volver a abrir la sesión.
+      permisos: [],
     };
-    sesionEnCache = Promise.resolve(usuario);
+    // El personal necesita sus permisos: se vuelven a pedir a /auth/yo en vez de usar este usuario.
+    sesionEnCache = r.tipo === "PERSONAL" ? null : Promise.resolve(usuario);
     return { ok: true, usuario };
   } catch (e) {
     borrarToken();

@@ -17,12 +17,13 @@ import {
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { cerrarSesion, useSesion } from "@/lib/auth";
+import { cerrarSesion, puedeCrearEn, useSesion } from "@/lib/auth";
 import type { NegocioGuardado, Usuario } from "@/lib/auth";
 import { ApiError } from "@/lib/api";
 import { textoSobre } from "@/lib/colores";
 import { ConfigCampos } from "@/components/gestor/ConfigCampos";
 import { ConfigModulos } from "@/components/gestor/ConfigModulos";
+import { AgregarRegistro } from "@/components/gestor/AgregarRegistro";
 import { IconoModulo } from "@/components/gestor/comunes";
 import {
   cargarTabla,
@@ -31,6 +32,7 @@ import {
   listarModulos,
   mensajeDeError,
 } from "@/lib/gestor";
+import { admiteAgregar } from "@/lib/registros";
 import type { Campo, ColumnaTabla, FilaTabla, Modulo, TablaDatos } from "@/lib/gestor";
 
 export const Route = createFileRoute("/panel")({
@@ -165,10 +167,12 @@ function EsqueletoTabla() {
 function VistaModulo({
   modulo,
   negocio,
+  puedeAgregar,
   onSesionVencida,
 }: {
   modulo: Modulo;
   negocio: NegocioGuardado;
+  puedeAgregar: boolean;
   onSesionVencida: () => void;
 }) {
   const [campos, setCampos] = useState<Campo[] | null>(null);
@@ -176,6 +180,8 @@ function VistaModulo({
   const [error, setError] = useState<string | null>(null);
   const [pagina, setPagina] = useState(0);
   const [intento, setIntento] = useState(0);
+  // Sube al guardar un registro nuevo para volver a pedir la tabla.
+  const [recarga, setRecarga] = useState(0);
 
   const manejarError = (e: unknown) => {
     if (e instanceof ApiError && e.status === 401) onSesionVencida();
@@ -208,7 +214,21 @@ function VistaModulo({
       vigente = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [campos, pagina, modulo]);
+  }, [campos, pagina, modulo, recarga]);
+
+  /** true si el error era de sesión vencida (ya se atendió). */
+  const sesionVencida = (e: unknown) => {
+    if (e instanceof ApiError && e.status === 401) {
+      onSesionVencida();
+      return true;
+    }
+    return false;
+  };
+
+  const alCrearRegistro = () => {
+    setPagina(0);
+    setRecarga((n) => n + 1);
+  };
 
   const cambiarPagina = (nueva: number) => {
     setTabla(null);
@@ -309,6 +329,15 @@ function VistaModulo({
               )}
             </div>
           </>
+        )}
+
+        {tabla !== null && campos !== null && puedeAgregar && admiteAgregar(modulo) && (
+          <AgregarRegistro
+            modulo={modulo}
+            campos={campos}
+            onCreado={alCrearRegistro}
+            onSesionVencida={sesionVencida}
+          />
         )}
       </section>
     </div>
@@ -617,7 +646,13 @@ function Gestor({ usuario, negocio }: { usuario: Usuario; negocio: NegocioGuarda
         )}
 
         {vista.tipo === "datos" && modulo && (
-          <VistaModulo key={modulo.id} modulo={modulo} negocio={negocio} onSesionVencida={salir} />
+          <VistaModulo
+            key={modulo.id}
+            modulo={modulo}
+            negocio={negocio}
+            puedeAgregar={puedeCrearEn(usuario, modulo.id)}
+            onSesionVencida={salir}
+          />
         )}
       </main>
     </div>
