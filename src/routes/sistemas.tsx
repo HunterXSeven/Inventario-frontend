@@ -1,7 +1,24 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
-import { AlertCircle, ArrowRight, Building2, LogOut, PackageCheck, Plus } from "lucide-react";
-import { cerrarSesion, listarSistemas, seleccionarSistema, useSesion } from "@/lib/auth";
+import {
+  AlertCircle,
+  ArrowRight,
+  Building2,
+  LogOut,
+  PackageCheck,
+  Pencil,
+  Plus,
+  Trash2,
+} from "lucide-react";
+import {
+  cerrarSesion,
+  eliminarSistema,
+  listarSistemas,
+  seleccionarSistema,
+  useSesion,
+} from "@/lib/auth";
+import { BotonIcono } from "@/components/gestor/comunes";
+import { EditarSistema } from "@/components/sistemas/EditarSistema";
 import type { NegocioGuardado } from "@/lib/auth";
 import { textoSobre } from "@/lib/colores";
 
@@ -24,59 +41,107 @@ function TarjetaSistema({
   negocio,
   abriendo,
   bloqueada,
+  confirmando,
   onAbrir,
+  onEditar,
+  onEliminar,
+  onConfirmarEliminar,
+  onCancelarEliminar,
 }: {
   negocio: NegocioGuardado;
   abriendo: boolean;
   bloqueada: boolean;
+  confirmando: boolean;
   onAbrir: () => void;
+  onEditar: () => void;
+  onEliminar: () => void;
+  onConfirmarEliminar: () => void;
+  onCancelarEliminar: () => void;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onAbrir}
-      disabled={bloqueada}
-      className="group flex flex-col rounded-2xl border border-border bg-card p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
-    >
-      <div className="flex items-center gap-3">
-        {negocio.logoUrl ? (
-          <img
-            src={negocio.logoUrl}
-            alt={`Logo de ${negocio.nombre}`}
-            className="size-12 shrink-0 rounded-xl border border-border bg-white object-contain p-0.5"
-          />
-        ) : (
-          <span
-            className="grid size-12 shrink-0 place-items-center rounded-xl"
-            style={{
-              backgroundColor: negocio.colorPrimario,
-              color: textoSobre(negocio.colorPrimario),
-            }}
-          >
-            <Building2 className="size-6" />
-          </span>
-        )}
-        <div className="min-w-0">
-          <p className="truncate text-lg font-semibold text-foreground">{negocio.nombre}</p>
-          <div className="mt-1 flex items-center gap-1.5">
-            <span
-              className="size-3.5 rounded-full border border-black/10"
-              style={{ backgroundColor: negocio.colorPrimario }}
+    <div className="flex flex-col rounded-2xl border border-border bg-card shadow-sm transition-all hover:border-primary/40 hover:shadow-md">
+      <button
+        type="button"
+        onClick={onAbrir}
+        disabled={bloqueada}
+        className="group flex flex-1 flex-col rounded-t-2xl p-5 text-left disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        <div className="flex items-center gap-3">
+          {negocio.logoUrl ? (
+            <img
+              src={negocio.logoUrl}
+              alt={`Logo de ${negocio.nombre}`}
+              className="size-12 shrink-0 rounded-xl border border-border bg-white object-contain p-0.5"
             />
+          ) : (
             <span
-              className="size-3.5 rounded-full border border-black/10"
-              style={{ backgroundColor: negocio.colorSecundario }}
-            />
+              className="grid size-12 shrink-0 place-items-center rounded-xl"
+              style={{
+                backgroundColor: negocio.colorPrimario,
+                color: textoSobre(negocio.colorPrimario),
+              }}
+            >
+              <Building2 className="size-6" />
+            </span>
+          )}
+          <div className="min-w-0">
+            <p className="truncate text-lg font-semibold text-foreground">{negocio.nombre}</p>
+            <div className="mt-1 flex items-center gap-1.5">
+              <span
+                className="size-3.5 rounded-full border border-black/10"
+                style={{ backgroundColor: negocio.colorPrimario }}
+              />
+              <span
+                className="size-3.5 rounded-full border border-black/10"
+                style={{ backgroundColor: negocio.colorSecundario }}
+              />
+            </div>
           </div>
         </div>
-      </div>
-      <span className="mt-5 inline-flex items-center gap-1.5 text-sm font-semibold text-primary">
-        {abriendo ? "Abriendo…" : "Abrir sistema"}
-        {!abriendo && (
-          <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
+        <span className="mt-5 inline-flex items-center gap-1.5 text-sm font-semibold text-primary">
+          {abriendo ? "Abriendo…" : "Abrir sistema"}
+          {!abriendo && (
+            <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
+          )}
+        </span>
+      </button>
+
+      <div className="flex items-center justify-end gap-2 border-t border-border px-4 py-2.5">
+        {confirmando ? (
+          <>
+            <span className="mr-auto text-sm text-foreground">¿Eliminar {negocio.nombre}?</span>
+            <button
+              type="button"
+              onClick={onConfirmarEliminar}
+              className="rounded-full bg-destructive px-4 py-1.5 text-sm font-semibold text-white"
+            >
+              Sí, eliminar
+            </button>
+            <button
+              type="button"
+              onClick={onCancelarEliminar}
+              className="rounded-full border border-border px-4 py-1.5 text-sm font-semibold text-foreground"
+            >
+              No
+            </button>
+          </>
+        ) : (
+          <>
+            <BotonIcono titulo={`Editar ${negocio.nombre}`} onClick={onEditar} disabled={bloqueada}>
+              <Pencil className="size-4" />
+            </BotonIcono>
+            <BotonIcono
+              titulo={`Eliminar ${negocio.nombre}`}
+              peligro
+              onClick={onEliminar}
+              disabled={bloqueada}
+            >
+              <Trash2 className="size-4" />
+            </BotonIcono>
+          </>
         )}
-      </span>
-    </button>
+      </div>
+    </div>
   );
 }
 
@@ -87,6 +152,8 @@ function Sistemas() {
   const [sistemas, setSistemas] = useState<NegocioGuardado[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [abriendoId, setAbriendoId] = useState<number | null>(null);
+  const [editandoId, setEditandoId] = useState<number | null>(null);
+  const [confirmandoId, setConfirmandoId] = useState<number | null>(null);
 
   // Ruta protegida: sin sesión va a /login; el personal trabaja directo en su sistema.
   useEffect(() => {
@@ -120,6 +187,17 @@ function Sistemas() {
       return;
     }
     navigate({ to: "/panel" });
+  };
+
+  const eliminar = async (negocio: NegocioGuardado) => {
+    setConfirmandoId(null);
+    setError(null);
+    const r = await eliminarSistema(negocio.id);
+    if (!r.ok) {
+      setError(r.error);
+      return;
+    }
+    await cargar();
   };
 
   const salir = () => {
@@ -227,15 +305,35 @@ function Sistemas() {
 
         {sistemas !== null && sistemas.length > 0 && (
           <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {sistemas.map((s) => (
-              <TarjetaSistema
-                key={s.id}
-                negocio={s}
-                abriendo={abriendoId === s.id}
-                bloqueada={abriendoId !== null}
-                onAbrir={() => void abrir(s)}
-              />
-            ))}
+            {sistemas.map((s) =>
+              editandoId === s.id ? (
+                <EditarSistema
+                  key={s.id}
+                  negocio={s}
+                  onCancelar={() => setEditandoId(null)}
+                  onListo={() => {
+                    setEditandoId(null);
+                    void cargar();
+                  }}
+                />
+              ) : (
+                <TarjetaSistema
+                  key={s.id}
+                  negocio={s}
+                  abriendo={abriendoId === s.id}
+                  bloqueada={abriendoId !== null}
+                  confirmando={confirmandoId === s.id}
+                  onAbrir={() => void abrir(s)}
+                  onEditar={() => {
+                    setConfirmandoId(null);
+                    setEditandoId(s.id);
+                  }}
+                  onEliminar={() => setConfirmandoId(s.id)}
+                  onConfirmarEliminar={() => void eliminar(s)}
+                  onCancelarEliminar={() => setConfirmandoId(null)}
+                />
+              ),
+            )}
           </div>
         )}
       </main>

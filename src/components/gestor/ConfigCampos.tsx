@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import {
   ArrowLeft,
   Calendar,
+  ChevronDown,
+  ChevronUp,
   CircleDollarSign,
   Eye,
   EyeOff,
@@ -25,6 +27,7 @@ import {
   esDeSistema,
   listarCamposConfig,
   puedeSerFiltrable,
+  reordenarCampos,
 } from "@/lib/configuracion";
 import type { CampoConfig, DatosCampo } from "@/lib/configuracion";
 import { mensajeDeError } from "@/lib/gestor";
@@ -357,8 +360,15 @@ export function ConfigCampos({
         )}
 
         <ul>
-          {campos?.map((c) => {
+          {campos?.map((c, indice) => {
             const deSistema = esDeSistema(c);
+            /** Cambia de lugar con el vecino y guarda la lista completa (ocultos incluidos). */
+            const mover = (delta: -1 | 1) => {
+              const ids = campos.map((x) => x.id);
+              const destino = indice + delta;
+              [ids[indice], ids[destino]] = [ids[destino] as number, ids[indice] as number];
+              void accion(c, () => reordenarCampos(modulo.id, ids));
+            };
             const ocupado = ocupadoId === c.id;
 
             if (editandoId === c.id) {
@@ -429,6 +439,20 @@ export function ConfigCampos({
                   </div>
                 ) : (
                   <div className="flex items-center gap-2">
+                    <BotonIcono
+                      titulo={`Subir ${c.nombre}`}
+                      disabled={indice === 0 || ocupadoId !== null}
+                      onClick={() => mover(-1)}
+                    >
+                      <ChevronUp className="size-4" />
+                    </BotonIcono>
+                    <BotonIcono
+                      titulo={`Bajar ${c.nombre}`}
+                      disabled={indice === campos.length - 1 || ocupadoId !== null}
+                      onClick={() => mover(1)}
+                    >
+                      <ChevronDown className="size-4" />
+                    </BotonIcono>
                     <BotonIcono
                       titulo={`Editar ${c.nombre}`}
                       disabled={ocupado}

@@ -260,6 +260,48 @@ export async function listarSistemas(): Promise<
   }
 }
 
+export interface DatosSistema {
+  nombre: string;
+  logoUrl: string;
+  colorPrimario: string;
+  colorSecundario: string;
+}
+
+/** Edita un sistema del dueño (PUT /sistemas/{id}). */
+export async function editarSistema(
+  id: number,
+  datos: DatosSistema,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    await api(`/sistemas/${id}`, {
+      metodo: "PUT",
+      cuerpo: {
+        nombrenegocio: datos.nombre.trim(),
+        colorprincipal: datos.colorPrimario,
+        colorsecundario: datos.colorSecundario,
+        logourl: datos.logoUrl.trim() || null,
+      },
+    });
+    sesionEnCache = null; // el panel debe volver a leer nombre y colores
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: mensajeDe(e) };
+  }
+}
+
+/** Elimina un sistema del dueño (DELETE /sistemas/{id}). */
+export async function eliminarSistema(
+  id: number,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    await api(`/sistemas/${id}`, { metodo: "DELETE" });
+    sesionEnCache = null;
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: mensajeDe(e) };
+  }
+}
+
 /** Entra a un sistema: el backend devuelve un token nuevo ligado a él (POST /auth/sistema/{id}). */
 export async function seleccionarSistema(idsistema: number): Promise<ResultadoNegocio> {
   try {

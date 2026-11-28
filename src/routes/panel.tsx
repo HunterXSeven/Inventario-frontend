@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 import {
   AlertCircle,
   KeyRound,
+  Eye,
+  History,
   Pencil,
   ShieldCheck,
   Trash2,
@@ -31,15 +33,18 @@ import { ConfigModulos } from "@/components/gestor/ConfigModulos";
 import { PanelAccion, nombreDeFila } from "@/components/gestor/AccionesFila";
 import type { AccionEnFila, TipoAccion } from "@/components/gestor/AccionesFila";
 import { AgregarRegistro } from "@/components/gestor/AgregarRegistro";
-import { BotonIcono, IconoModulo } from "@/components/gestor/comunes";
+import { BarraFiltros, tieneFiltros } from "@/components/gestor/BarraFiltros";
+import { BotonIcono, EtiquetaMovimiento, IconoModulo } from "@/components/gestor/comunes";
 import {
   cargarTabla,
+  hayConsulta,
+  sinConsulta,
   formatearCelda,
   listarCampos,
   listarModulos,
   mensajeDeError,
 } from "@/lib/gestor";
-import type { Campo, ColumnaTabla, FilaTabla, Modulo, TablaDatos } from "@/lib/gestor";
+import type { Campo, ColumnaTabla, Consulta, FilaTabla, Modulo, TablaDatos } from "@/lib/gestor";
 
 export const Route = createFileRoute("/panel")({
   head: () => ({
@@ -73,20 +78,6 @@ function descripcionDe(modulo: Modulo): string {
 
 const esNumerica = (c: ColumnaTabla) => c.tipo === "numero" || c.tipo === "dinero";
 
-function EtiquetaMovimiento({ tipo }: { tipo: string }) {
-  const estilo =
-    tipo === "Entrada"
-      ? "bg-success/10 text-success"
-      : tipo === "Salida"
-        ? "bg-destructive/10 text-destructive"
-        : "bg-primary/10 text-primary";
-  return (
-    <span className={cn("inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold", estilo)}>
-      {tipo}
-    </span>
-  );
-}
-
 function Celda({ columna, fila }: { columna: ColumnaTabla; fila: FilaTabla }) {
   const valor = fila.celdas[columna.clave];
 
@@ -119,12 +110,17 @@ interface AccionesTabla {
   eliminar: boolean;
   /** Solo en Personal: cambiar contraseña y editar permisos. */
   empleado: boolean;
+  /** Ventas: ver las líneas de la venta. */
+  detalle: boolean;
+  /** Productos: ver su historial de movimientos. */
+  historial: boolean;
   etiqueta: (fila: FilaTabla) => string;
   onAccion: (tipo: TipoAccion, fila: FilaTabla) => void;
 }
 
 function TablaRegistros({ tabla, acciones }: { tabla: TablaDatos; acciones?: AccionesTabla }) {
-  const hayAcciones = !!acciones && (acciones.editar || acciones.eliminar);
+  const hayAcciones =
+    !!acciones && (acciones.editar || acciones.eliminar || acciones.detalle || acciones.historial);
   return (
     <div className="overflow-x-auto">
       <table className="w-full min-w-max border-collapse text-sm">
@@ -166,6 +162,22 @@ function TablaRegistros({ tabla, acciones }: { tabla: TablaDatos; acciones?: Acc
               {hayAcciones && acciones && (
                 <td className="px-4 py-2">
                   <div className="flex items-center justify-end gap-1.5">
+                    {acciones.detalle && (
+                      <BotonIcono
+                        titulo={`Ver detalle de ${acciones.etiqueta(fila)}`}
+                        onClick={() => acciones.onAccion("detalle", fila)}
+                      >
+                        <Eye className="size-4" />
+                      </BotonIcono>
+                    )}
+                    {acciones.historial && (
+                      <BotonIcono
+                        titulo={`Historial de ${acciones.etiqueta(fila)}`}
+                        onClick={() => acciones.onAccion("historial", fila)}
+                      >
+                        <History className="size-4" />
+                      </BotonIcono>
+                    )}
                     {acciones.editar && (
                       <BotonIcono
                         titulo={`Editar ${acciones.etiqueta(fila)}`}
@@ -246,6 +258,8 @@ function VistaModulo({
   const [recarga, setRecarga] = useState(0);
   // Acción abierta sobre una fila (editar, eliminar…) y mensaje del último cambio.
   const [accion, setAccion] = useState<AccionEnFila | null>(null);
+  // Fechas, stock bajo o filtro por campo.
+  const [extra, setExtra] = useState<Consulta>(sinConsulta);
   const [aviso, setAviso] = useState<string | null>(null);
 
   const manejarError = (e: unknown) => {
@@ -272,14 +286,14 @@ function VistaModulo({
     if (!campos) return;
     let vigente = true;
     setError(null);
-    cargarTabla(modulo, campos, pagina)
+    cargarTabla(modulo, campos, pagina, extra)
       .then((t) => vigente && setTabla(t))
       .catch((e: unknown) => vigente && manejarError(e));
     return () => {
       vigente = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [campos, pagina, modulo, recarga]);
+  }, [campos, pagina, modulo, recarga, extra]);
 
   /** true si el error era de sesión vencida (ya se atendió). */
   const sesionVencida = (e: unknown) => {
@@ -309,6 +323,14 @@ function VistaModulo({
 
   const puedeEditar = permisos.editar && admiteEdicion(modulo);
   const puedeEliminar = permisos.eliminar && admiteEdicion(modulo);
+
+  const cambiarConsulta = (nueva: Consulta) => {
+    setAccion(null);
+    setAviso(null);
+    setPagina(0);
+    setTabla(null);
+    setExtra(nueva);
+  };
 
   const cambiarPagina = (nueva: number) => {
     setTabla(null);
@@ -341,6 +363,15 @@ function VistaModulo({
       </div>
 
       <section className="mt-8 overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+        {campos !== null && tieneFiltros(modulo, campos) && (
+          <BarraFiltros
+            modulo={modulo}
+            campos={campos}
+            consulta={extra}
+            onCambiar={cambiarConsulta}
+          />
+        )}
+
         {error && (
           <div
             role="alert"
@@ -368,9 +399,13 @@ function VistaModulo({
             <span className="mx-auto grid size-12 place-items-center rounded-full bg-muted text-muted-foreground">
               <Inbox className="size-6" />
             </span>
-            <p className="mt-4 font-semibold text-foreground">Todavía no hay registros</p>
+            <p className="mt-4 font-semibold text-foreground">
+              {hayConsulta(extra) ? "No hay registros que coincidan" : "Todavía no hay registros"}
+            </p>
             <p className="mt-1 text-sm text-muted-foreground">
-              Cuando haya datos en {modulo.nombre}, aparecerán aquí.
+              {hayConsulta(extra)
+                ? "Prueba con otro filtro o quítalo para ver todo."
+                : `Cuando haya datos en ${modulo.nombre}, aparecerán aquí.`}
             </p>
           </div>
         )}
@@ -383,6 +418,10 @@ function VistaModulo({
                 editar: puedeEditar,
                 eliminar: puedeEliminar,
                 empleado: modulo.predefinido === "personal",
+                detalle: modulo.predefinido === "ventas",
+                historial:
+                  modulo.predefinido === "productos" &&
+                  modulos.some((m) => m.predefinido === "movimientos"),
                 etiqueta: (f) => nombreDeFila(modulo, campos ?? [], f),
                 onAccion: (tipo, fila) => {
                   setAviso(null);

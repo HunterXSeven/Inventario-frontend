@@ -76,3 +76,17 @@ export function BotonIcono({
 
 export const claseInput =
   "w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:opacity-60";
+
+export function EtiquetaMovimiento({ tipo }: { tipo: string }) {
+  const estilo =
+    tipo === "Entrada"
+      ? "bg-success/10 text-success"
+      : tipo === "Salida"
+        ? "bg-destructive/10 text-destructive"
+        : "bg-primary/10 text-primary";
+  return (
+    <span className={cn("inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold", estilo)}>
+      {tipo}
+    </span>
+  );
+}

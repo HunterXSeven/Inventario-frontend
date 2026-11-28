@@ -18,6 +18,7 @@ const campo = (id: number, nombre: string, tipo: Campo["tipo"], columna: string 
   tipo,
   columna,
   orden: id,
+  filtrable: false,
 });
 
 const productos = [

@@ -105,6 +105,10 @@ export async function crearModulo(nombre: string): Promise<Modulo> {
   );
 }
 
+export async function renombrarModulo(id: number, nombre: string): Promise<void> {
+  await api(`/modulos/${id}`, { metodo: "PUT", cuerpo: { nombremodulo: nombre.trim() } });
+}
+
 export async function cambiarVisibilidadModulo(id: number, visible: boolean): Promise<void> {
   await api(`/modulos/${id}/visibilidad`, { metodo: "PUT", cuerpo: { visible } });
 }
@@ -138,6 +142,11 @@ export async function editarCampo(id: number, datos: DatosCampo): Promise<void> 
 
 export async function cambiarVisibilidadCampo(id: number, visible: boolean): Promise<void> {
   await api(`/campos/${id}/visibilidad`, { metodo: "PUT", cuerpo: { visible } });
+}
+
+/** Guarda el nuevo orden: el backend exige la lista completa de campos del módulo (también los ocultos). */
+export async function reordenarCampos(idmodulo: number, idcampos: number[]): Promise<void> {
+  await api(`/modulos/${idmodulo}/campos/orden`, { metodo: "PUT", cuerpo: { idcampos } });
 }
 
 export async function eliminarCampo(id: number): Promise<void> {

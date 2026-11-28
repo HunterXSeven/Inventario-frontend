@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import type { FormEvent } from "react";
-import { AlertaError, claseInput } from "@/components/gestor/comunes";
+import { AlertaError, EtiquetaMovimiento, claseInput } from "@/components/gestor/comunes";
 import {
   Botones,
   Etiqueta,
@@ -23,7 +24,9 @@ import {
   valoresDeRegistro,
 } from "@/lib/edicion";
 import type { PermisosCargados } from "@/lib/edicion";
-import { mensajeDeError } from "@/lib/gestor";
+import { cargarHistorial, cargarVenta } from "@/lib/consultas";
+import type { DetalleDeVenta, HistorialDeProducto } from "@/lib/consultas";
+import { formatearCelda, mensajeDeError } from "@/lib/gestor";
 import type { Campo, FilaTabla, Modulo } from "@/lib/gestor";
 import { cambiarPermiso, validarContrasena, validarDatosPersonal } from "@/lib/personal";
 import type { Accion } from "@/lib/personal";
@@ -31,7 +34,7 @@ import { claveCampo, datosDeRegistro, validarProducto, validarRegistro } from "@
 import type { Valores } from "@/lib/registros";
 
 /** Lo que se puede hacer con una fila ya creada. */
-export type TipoAccion = "editar" | "eliminar" | "clave" | "permisos";
+export type TipoAccion = "editar" | "eliminar" | "clave" | "permisos" | "detalle" | "historial";
 
 export interface AccionEnFila {
   tipo: TipoAccion;
@@ -44,6 +47,7 @@ export function nombreDeFila(modulo: Modulo, campos: Campo[], fila: FilaTabla): 
   if (modulo.predefinido === "productos")
     return String(celdas["nombreproducto"] ?? "este producto");
   if (modulo.predefinido === "personal") return String(celdas["nombre"] ?? "este empleado");
+  if (modulo.predefinido === "ventas") return String(celdas["numero"] ?? "esta venta");
   const primero = campos
     .map((c) => celdas[`c${c.id}`])
     .find((v) => v !== null && v !== undefined && String(v).trim() !== "");
@@ -55,6 +59,8 @@ const TITULOS: Record<TipoAccion, string> = {
   eliminar: "Eliminar",
   clave: "Cambiar contraseña de",
   permisos: "Permisos de",
+  detalle: "Detalle de la venta",
+  historial: "Historial de",
 };
 
 export function PanelAccion({
@@ -93,6 +99,12 @@ export function PanelAccion({
           {...comunes}
         />
       );
+      break;
+    case "detalle":
+      contenido = <DetalleVenta fila={accion.fila} {...comunes} />;
+      break;
+    case "historial":
+      contenido = <Historial fila={accion.fila} {...comunes} />;
       break;
     case "clave":
       contenido = (
@@ -428,5 +440,210 @@ function FormPermisos({
       {error && <AlertaError mensaje={error} />}
       <Botones enviando={enviando} onCancelar={props.onCancelar} />
     </form>
+  );
+}
+
+/* ------------------------------------------------------------
+   Consultas: detalle de una venta e historial de un producto
+   ------------------------------------------------------------ */
+
+function BotonCerrar({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="rounded-full border border-border bg-card px-6 py-2.5 text-sm font-semibold text-foreground transition-colors hover:border-primary/40"
+    >
+      Cerrar
+    </button>
+  );
+}
+
+function DetalleVenta({
+  fila,
+  onCancelar,
+  onSesionVencida,
+}: {
+  fila: FilaTabla;
+  onCancelar: () => void;
+  onSesionVencida: (e: unknown) => boolean;
+}) {
+  const [venta, setVenta] = useState<DetalleDeVenta | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let vigente = true;
+    cargarVenta(fila.id)
+      .then((v) => vigente && setVenta(v))
+      .catch((e: unknown) => {
+        if (!vigente || onSesionVencida(e)) return;
+        setError(mensajeDeError(e));
+      });
+    return () => {
+      vigente = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fila.id]);
+
+  return (
+    <div className="space-y-4">
+      {error && <AlertaError mensaje={error} />}
+      {!venta && !error && <p className="text-sm text-muted-foreground">Cargando venta…</p>}
+      {venta && (
+        <>
+          <p className="text-sm text-muted-foreground">
+            {formatearCelda("fechahora", { fecha: venta.fecha, hora: venta.hora })} · Vendedor:{" "}
+            {venta.vendedor}
+            {venta.cliente ? ` · Cliente: ${venta.cliente}` : ""}
+          </p>
+          <div className="overflow-x-auto rounded-xl border border-border bg-card">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
+                  <th scope="col" className="px-4 py-2.5 text-left font-semibold">
+                    Producto
+                  </th>
+                  <th scope="col" className="px-4 py-2.5 text-right font-semibold">
+                    Cantidad
+                  </th>
+                  <th scope="col" className="px-4 py-2.5 text-right font-semibold">
+                    Precio
+                  </th>
+                  <th scope="col" className="px-4 py-2.5 text-right font-semibold">
+                    Subtotal
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {venta.lineas.map((l, i) => (
+                  <tr key={i} className="border-b border-border/70 last:border-0">
+                    <td className="px-4 py-2.5">{l.producto}</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums">{l.cantidad}</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums">
+                      {formatearCelda("dinero", l.precio)}
+                    </td>
+                    <td className="px-4 py-2.5 text-right tabular-nums">
+                      {formatearCelda("dinero", l.subtotal)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="border-t border-border bg-muted/30 font-semibold">
+                  <td colSpan={3} className="px-4 py-2.5 text-right">
+                    Total
+                  </td>
+                  <td className="px-4 py-2.5 text-right tabular-nums">
+                    {formatearCelda("dinero", venta.total)}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </>
+      )}
+      <BotonCerrar onClick={onCancelar} />
+    </div>
+  );
+}
+
+function Historial({
+  fila,
+  onCancelar,
+  onSesionVencida,
+}: {
+  fila: FilaTabla;
+  onCancelar: () => void;
+  onSesionVencida: (e: unknown) => boolean;
+}) {
+  const [pagina, setPagina] = useState(0);
+  const [datos, setDatos] = useState<HistorialDeProducto | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let vigente = true;
+    setDatos(null);
+    cargarHistorial(fila.id, pagina)
+      .then((h) => vigente && setDatos(h))
+      .catch((e: unknown) => {
+        if (!vigente || onSesionVencida(e)) return;
+        setError(mensajeDeError(e));
+      });
+    return () => {
+      vigente = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fila.id, pagina]);
+
+  return (
+    <div className="space-y-4">
+      {error && <AlertaError mensaje={error} />}
+      {!datos && !error && <p className="text-sm text-muted-foreground">Cargando historial…</p>}
+      {datos && datos.movimientos.length === 0 && (
+        <p className="text-sm text-muted-foreground">Este producto todavía no tiene movimientos.</p>
+      )}
+      {datos && datos.movimientos.length > 0 && (
+        <>
+          <div className="overflow-x-auto rounded-xl border border-border bg-card">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
+                  {["Fecha", "Tipo", "Cantidad", "Responsable", "Motivo"].map((t, i) => (
+                    <th
+                      key={t}
+                      scope="col"
+                      className={`px-4 py-2.5 font-semibold ${i === 2 ? "text-right" : "text-left"}`}
+                    >
+                      {t}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {datos.movimientos.map((m) => (
+                  <tr key={m.id} className="border-b border-border/70 last:border-0">
+                    <td className="px-4 py-2.5">
+                      {formatearCelda("fechahora", { fecha: m.fecha, hora: m.hora })}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <EtiquetaMovimiento tipo={m.tipo} />
+                    </td>
+                    <td className="px-4 py-2.5 text-right tabular-nums">{m.cantidad}</td>
+                    <td className="px-4 py-2.5">{m.responsable}</td>
+                    <td className="px-4 py-2.5">{formatearCelda("texto", m.motivo)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {datos.paginas > 1 && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <button
+                type="button"
+                aria-label="Página anterior del historial"
+                disabled={pagina === 0}
+                onClick={() => setPagina(pagina - 1)}
+                className="grid size-8 place-items-center rounded-lg border border-border bg-card text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <ChevronLeft className="size-4" />
+              </button>
+              <span>
+                Página {pagina + 1} de {datos.paginas}
+              </span>
+              <button
+                type="button"
+                aria-label="Página siguiente del historial"
+                disabled={pagina + 1 >= datos.paginas}
+                onClick={() => setPagina(pagina + 1)}
+                className="grid size-8 place-items-center rounded-lg border border-border bg-card text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <ChevronRight className="size-4" />
+              </button>
+            </div>
+          )}
+        </>
+      )}
+      <BotonCerrar onClick={onCancelar} />
+    </div>
   );
 }

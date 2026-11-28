@@ -51,6 +51,7 @@ const campo = (
   tipo,
   columna,
   orden,
+  filtrable: false,
 });
 
 beforeEach(() => {

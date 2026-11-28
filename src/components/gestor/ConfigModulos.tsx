@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Eye, EyeOff, Plus, Settings, Trash2 } from "lucide-react";
+import { Eye, EyeOff, Pencil, Plus, Settings, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ApiError } from "@/lib/api";
 import type { NegocioGuardado } from "@/lib/auth";
@@ -9,6 +9,7 @@ import {
   crearModulo,
   eliminarModulo,
   listarModulosConfig,
+  renombrarModulo,
 } from "@/lib/configuracion";
 import { mensajeDeError } from "@/lib/gestor";
 import type { Modulo } from "@/lib/gestor";
@@ -37,6 +38,8 @@ export function ConfigModulos({
   const [guardando, setGuardando] = useState(false);
   const [ocupadoId, setOcupadoId] = useState<number | null>(null);
   const [confirmandoId, setConfirmandoId] = useState<number | null>(null);
+  const [renombrandoId, setRenombrandoId] = useState<number | null>(null);
+  const [nuevoNombre, setNuevoNombre] = useState("");
 
   const manejarError = useCallback(
     (e: unknown) => {
@@ -95,6 +98,17 @@ export function ConfigModulos({
     } finally {
       setOcupadoId(null);
     }
+  };
+
+  const guardarNombre = (m: Modulo) => {
+    if (!nuevoNombre.trim()) {
+      setError("Escribe el nombre del módulo.");
+      return;
+    }
+    void accion(m, async () => {
+      await renombrarModulo(m.id, nuevoNombre);
+      setRenombrandoId(null);
+    });
   };
 
   return (
@@ -203,13 +217,46 @@ export function ConfigModulos({
                   <IconoModulo modulo={m} className="size-5" />
                 </span>
 
-                <div className={cn("min-w-0 flex-1", !m.visible && "opacity-60")}>
-                  <p className="truncate font-semibold text-foreground">{m.nombre}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {esSistema ? "Predefinido" : "Personalizado"}
-                    {!m.visible && " · Oculto"}
-                  </p>
-                </div>
+                {renombrandoId === m.id ? (
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      guardarNombre(m);
+                    }}
+                    className="flex min-w-0 flex-1 flex-wrap items-center gap-2"
+                  >
+                    <input
+                      autoFocus
+                      aria-label={`Nuevo nombre de ${m.nombre}`}
+                      value={nuevoNombre}
+                      maxLength={50}
+                      onChange={(e) => setNuevoNombre(e.target.value)}
+                      className={cn(claseInput, "min-w-0 flex-1 sm:w-auto")}
+                    />
+                    <button
+                      type="submit"
+                      disabled={ocupado}
+                      className="rounded-full bg-primary px-4 py-1.5 text-sm font-semibold text-primary-foreground disabled:opacity-60"
+                    >
+                      Guardar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setRenombrandoId(null)}
+                      className="rounded-full border border-border bg-card px-4 py-1.5 text-sm font-semibold text-foreground"
+                    >
+                      Cancelar
+                    </button>
+                  </form>
+                ) : (
+                  <div className={cn("min-w-0 flex-1", !m.visible && "opacity-60")}>
+                    <p className="truncate font-semibold text-foreground">{m.nombre}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {esSistema ? "Predefinido" : "Personalizado"}
+                      {!m.visible && " · Oculto"}
+                    </p>
+                  </div>
+                )}
 
                 {confirmandoId === m.id ? (
                   <div className="flex items-center gap-2 text-sm">
@@ -230,8 +277,19 @@ export function ConfigModulos({
                       No
                     </button>
                   </div>
-                ) : (
+                ) : renombrandoId === m.id ? null : (
                   <div className="flex items-center gap-2">
+                    <BotonIcono
+                      titulo={`Renombrar ${m.nombre}`}
+                      disabled={ocupado}
+                      onClick={() => {
+                        setError(null);
+                        setNuevoNombre(m.nombre);
+                        setRenombrandoId(m.id);
+                      }}
+                    >
+                      <Pencil className="size-4" />
+                    </BotonIcono>
                     <BotonIcono
                       titulo={
                         !m.ocultable

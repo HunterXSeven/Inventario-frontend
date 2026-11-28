@@ -29,6 +29,8 @@ export interface Campo {
   /** Columna física en módulos predefinidos; null en campos personalizados. */
   columna: string | null;
   orden: number;
+  /** Se puede usar para filtrar los registros de un módulo personalizado. */
+  filtrable: boolean;
 }
 
 /** Cómo se dibuja una celda. */
@@ -74,6 +76,7 @@ interface CampoApi {
   tipocampo: TipoCampo;
   columna: string | null;
   orden: number | null;
+  filtrable?: boolean;
 }
 
 interface PaginaApi<T> {
@@ -147,6 +150,7 @@ export async function listarCampos(idmodulo: number): Promise<Campo[]> {
       tipo: c.tipocampo,
       columna: c.columna,
       orden: c.orden ?? 0,
+      filtrable: c.filtrable === true,
     }))
     .sort((a, b) => a.orden - b.orden || a.id - b.id);
 }
@@ -183,6 +187,58 @@ function columnasDeCampos(campos: Campo[], usarColumna: boolean): ColumnaTabla[]
 
 const consulta = (pagina: number) => `?pagina=${pagina}&tamano=${TAMANO_PAGINA}`;
 
+/** Filtro por un campo de un módulo personalizado (solo campos marcados como filtrables). */
+export interface FiltroCampo {
+  idcampo: number;
+  tipo: TipoCampo;
+  /** Texto exacto (campos de texto). */
+  valor: string;
+  /** Rango: mínimo/máximo (números) o desde/hasta (fechas yyyy-MM-dd). */
+  desde: string;
+  hasta: string;
+}
+
+/** Lo que se pide además de la página: rango de fechas, stock bajo o filtro de campo. */
+export interface Consulta {
+  /** Ventas y movimientos (yyyy-MM-dd). Sin fechas, el backend devuelve solo las de hoy. */
+  desde?: string;
+  hasta?: string;
+  /** Productos con stock en el mínimo o por debajo. */
+  stockBajo?: boolean;
+  filtro?: FiltroCampo | null;
+}
+
+export const sinConsulta: Consulta = {};
+
+export const hayConsulta = (c: Consulta): boolean =>
+  !!c.desde || !!c.hasta || !!c.stockBajo || !!c.filtro;
+
+function conFechas(base: string, c: Consulta): string {
+  const extra = [c.desde ? `desde=${c.desde}` : "", c.hasta ? `hasta=${c.hasta}` : ""]
+    .filter(Boolean)
+    .join("&");
+  return extra ? `${base}&${extra}` : base;
+}
+
+const MINIMO = "-99999999999999";
+const MAXIMO = "99999999999999";
+
+/** Ruta del listado de un módulo personalizado, con o sin filtro por campo. */
+export function rutaRegistros(idmodulo: number, numeroPagina: number, f?: FiltroCampo | null) {
+  const base = `/modulos/${idmodulo}/registros`;
+  if (!f) return `${base}${consulta(numeroPagina)}`;
+  const comun = `idcampo=${f.idcampo}&pagina=${numeroPagina}&tamano=${TAMANO_PAGINA}`;
+  switch (f.tipo) {
+    case "numero":
+    case "decimal":
+      return `${base}/filtro/numerico?${comun}&min=${f.desde.trim() || MINIMO}&max=${f.hasta.trim() || MAXIMO}`;
+    case "fecha":
+      return `${base}/filtro/fecha?${comun}&desde=${f.desde || "1900-01-01"}T00:00:00&hasta=${f.hasta || "2999-12-31"}T23:59:59`;
+    default:
+      return `${base}/filtro/texto?${comun}&valor=${encodeURIComponent(f.valor.trim())}`;
+  }
+}
+
 function pagina<T>(
   p: PaginaApi<T>,
   columnas: ColumnaTabla[],
@@ -202,15 +258,28 @@ export async function cargarTabla(
   modulo: Modulo,
   campos: Campo[],
   numeroPagina: number,
+  extra: Consulta = sinConsulta,
 ): Promise<TablaDatos> {
   switch (modulo.predefinido) {
     case "productos": {
-      const p = await api<PaginaApi<ProductoApi>>(`/productos${consulta(numeroPagina)}`);
-      return pagina(p, columnasDeCampos(campos, true), (x) => ({
+      const aFila = (x: ProductoApi): FilaTabla => ({
         id: String(x.idproducto),
         celdas: x,
         alerta: x.stock !== null && x.stockminimo !== null && x.stock <= x.stockminimo,
-      }));
+      });
+      if (extra.stockBajo) {
+        // El backend devuelve esta lista completa, sin paginar.
+        const lista = await api<ProductoApi[]>("/productos/stockbajo");
+        return {
+          columnas: columnasDeCampos(campos, true),
+          filas: lista.map(aFila),
+          pagina: 0,
+          paginas: 1,
+          total: lista.length,
+        };
+      }
+      const p = await api<PaginaApi<ProductoApi>>(`/productos${consulta(numeroPagina)}`);
+      return pagina(p, columnasDeCampos(campos, true), aFila);
     }
 
     case "personal": {
@@ -227,7 +296,9 @@ export async function cargarTabla(
     }
 
     case "ventas": {
-      const p = await api<PaginaApi<VentaApi>>(`/ventas${consulta(numeroPagina)}`);
+      const p = await api<PaginaApi<VentaApi>>(
+        conFechas(`/ventas${consulta(numeroPagina)}`, extra),
+      );
       const columnas: ColumnaTabla[] = [
         { clave: "numero", titulo: "N° venta", tipo: "texto" },
         { clave: "fecha", titulo: "Fecha", tipo: "fechahora" },
@@ -257,7 +328,9 @@ export async function cargarTabla(
     }
 
     case "movimientos": {
-      const p = await api<PaginaApi<MovimientoApi>>(`/movimientos${consulta(numeroPagina)}`);
+      const p = await api<PaginaApi<MovimientoApi>>(
+        conFechas(`/movimientos${consulta(numeroPagina)}`, extra),
+      );
       const columnas: ColumnaTabla[] = [
         { clave: "fecha", titulo: "Fecha", tipo: "fechahora" },
         { clave: "producto", titulo: "Producto", tipo: "texto" },
@@ -282,7 +355,7 @@ export async function cargarTabla(
     default: {
       // Módulo personalizado: los valores viven en datos["idCampo"].
       const p = await api<PaginaApi<RegistroApi>>(
-        `/modulos/${modulo.id}/registros${consulta(numeroPagina)}`,
+        rutaRegistros(modulo.id, numeroPagina, extra.filtro),
       );
       return pagina(p, columnasDeCampos(campos, false), (r) => ({
         id: String(r.idregistro),
