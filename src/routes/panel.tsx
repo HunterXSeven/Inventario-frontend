@@ -2,6 +2,10 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import {
   AlertCircle,
+  KeyRound,
+  Pencil,
+  ShieldCheck,
+  Trash2,
   ArrowLeftRight,
   Building2,
   ChevronLeft,
@@ -17,14 +21,17 @@ import {
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { cerrarSesion, puedeCrearEn, useSesion } from "@/lib/auth";
+import { cerrarSesion, puedeEn, useSesion } from "@/lib/auth";
 import type { NegocioGuardado, Usuario } from "@/lib/auth";
 import { ApiError } from "@/lib/api";
+import { admiteEdicion } from "@/lib/edicion";
 import { textoSobre } from "@/lib/colores";
 import { ConfigCampos } from "@/components/gestor/ConfigCampos";
 import { ConfigModulos } from "@/components/gestor/ConfigModulos";
+import { PanelAccion, nombreDeFila } from "@/components/gestor/AccionesFila";
+import type { AccionEnFila, TipoAccion } from "@/components/gestor/AccionesFila";
 import { AgregarRegistro } from "@/components/gestor/AgregarRegistro";
-import { IconoModulo } from "@/components/gestor/comunes";
+import { BotonIcono, IconoModulo } from "@/components/gestor/comunes";
 import {
   cargarTabla,
   formatearCelda,
@@ -32,7 +39,6 @@ import {
   listarModulos,
   mensajeDeError,
 } from "@/lib/gestor";
-import { admiteAgregar } from "@/lib/registros";
 import type { Campo, ColumnaTabla, FilaTabla, Modulo, TablaDatos } from "@/lib/gestor";
 
 export const Route = createFileRoute("/panel")({
@@ -108,7 +114,17 @@ function Celda({ columna, fila }: { columna: ColumnaTabla; fila: FilaTabla }) {
   return <>{texto}</>;
 }
 
-function TablaRegistros({ tabla }: { tabla: TablaDatos }) {
+interface AccionesTabla {
+  editar: boolean;
+  eliminar: boolean;
+  /** Solo en Personal: cambiar contraseña y editar permisos. */
+  empleado: boolean;
+  etiqueta: (fila: FilaTabla) => string;
+  onAccion: (tipo: TipoAccion, fila: FilaTabla) => void;
+}
+
+function TablaRegistros({ tabla, acciones }: { tabla: TablaDatos; acciones?: AccionesTabla }) {
+  const hayAcciones = !!acciones && (acciones.editar || acciones.eliminar);
   return (
     <div className="overflow-x-auto">
       <table className="w-full min-w-max border-collapse text-sm">
@@ -126,6 +142,11 @@ function TablaRegistros({ tabla }: { tabla: TablaDatos }) {
                 {c.titulo}
               </th>
             ))}
+            {hayAcciones && (
+              <th scope="col" className="px-4 py-3 text-right">
+                <span className="sr-only">Acciones</span>
+              </th>
+            )}
           </tr>
         </thead>
         <tbody>
@@ -142,6 +163,45 @@ function TablaRegistros({ tabla }: { tabla: TablaDatos }) {
                   <Celda columna={c} fila={fila} />
                 </td>
               ))}
+              {hayAcciones && acciones && (
+                <td className="px-4 py-2">
+                  <div className="flex items-center justify-end gap-1.5">
+                    {acciones.editar && (
+                      <BotonIcono
+                        titulo={`Editar ${acciones.etiqueta(fila)}`}
+                        onClick={() => acciones.onAccion("editar", fila)}
+                      >
+                        <Pencil className="size-4" />
+                      </BotonIcono>
+                    )}
+                    {acciones.editar && acciones.empleado && (
+                      <BotonIcono
+                        titulo={`Cambiar contraseña de ${acciones.etiqueta(fila)}`}
+                        onClick={() => acciones.onAccion("clave", fila)}
+                      >
+                        <KeyRound className="size-4" />
+                      </BotonIcono>
+                    )}
+                    {acciones.editar && acciones.empleado && (
+                      <BotonIcono
+                        titulo={`Permisos de ${acciones.etiqueta(fila)}`}
+                        onClick={() => acciones.onAccion("permisos", fila)}
+                      >
+                        <ShieldCheck className="size-4" />
+                      </BotonIcono>
+                    )}
+                    {acciones.eliminar && (
+                      <BotonIcono
+                        titulo={`Eliminar ${acciones.etiqueta(fila)}`}
+                        peligro
+                        onClick={() => acciones.onAccion("eliminar", fila)}
+                      >
+                        <Trash2 className="size-4" />
+                      </BotonIcono>
+                    )}
+                  </div>
+                </td>
+              )}
             </tr>
           ))}
         </tbody>
@@ -167,12 +227,14 @@ function EsqueletoTabla() {
 function VistaModulo({
   modulo,
   negocio,
-  puedeAgregar,
+  modulos,
+  permisos,
   onSesionVencida,
 }: {
   modulo: Modulo;
+  modulos: Modulo[];
   negocio: NegocioGuardado;
-  puedeAgregar: boolean;
+  permisos: { crear: boolean; editar: boolean; eliminar: boolean };
   onSesionVencida: () => void;
 }) {
   const [campos, setCampos] = useState<Campo[] | null>(null);
@@ -182,6 +244,9 @@ function VistaModulo({
   const [intento, setIntento] = useState(0);
   // Sube al guardar un registro nuevo para volver a pedir la tabla.
   const [recarga, setRecarga] = useState(0);
+  // Acción abierta sobre una fila (editar, eliminar…) y mensaje del último cambio.
+  const [accion, setAccion] = useState<AccionEnFila | null>(null);
+  const [aviso, setAviso] = useState<string | null>(null);
 
   const manejarError = (e: unknown) => {
     if (e instanceof ApiError && e.status === 401) onSesionVencida();
@@ -229,6 +294,21 @@ function VistaModulo({
     setPagina(0);
     setRecarga((n) => n + 1);
   };
+
+  const terminarAccion = (mensaje: string) => {
+    const tipo = accion?.tipo;
+    setAccion(null);
+    setAviso(mensaje);
+    if (tipo === "editar") setRecarga((n) => n + 1);
+    if (tipo === "eliminar") {
+      // Si era la última fila de la página, se vuelve a la anterior.
+      if (tabla !== null && tabla.filas.length === 1 && pagina > 0) setPagina(pagina - 1);
+      else setRecarga((n) => n + 1);
+    }
+  };
+
+  const puedeEditar = permisos.editar && admiteEdicion(modulo);
+  const puedeEliminar = permisos.eliminar && admiteEdicion(modulo);
 
   const cambiarPagina = (nueva: number) => {
     setTabla(null);
@@ -297,7 +377,19 @@ function VistaModulo({
 
         {tabla !== null && tabla.filas.length > 0 && (
           <>
-            <TablaRegistros tabla={tabla} />
+            <TablaRegistros
+              tabla={tabla}
+              acciones={{
+                editar: puedeEditar,
+                eliminar: puedeEliminar,
+                empleado: modulo.predefinido === "personal",
+                etiqueta: (f) => nombreDeFila(modulo, campos ?? [], f),
+                onAccion: (tipo, fila) => {
+                  setAviso(null);
+                  setAccion({ tipo, fila });
+                },
+              }}
+            />
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
               <span>
                 {tabla.total} {tabla.total === 1 ? "registro" : "registros"}
@@ -331,9 +423,32 @@ function VistaModulo({
           </>
         )}
 
-        {tabla !== null && campos !== null && puedeAgregar && admiteAgregar(modulo) && (
+        {aviso && !accion && (
+          <p
+            role="status"
+            className="border-t border-border px-4 pt-3 text-sm font-medium text-primary"
+          >
+            {aviso}
+          </p>
+        )}
+
+        {tabla !== null && campos !== null && accion && (
+          <PanelAccion
+            key={`${accion.tipo}-${accion.fila.id}`}
+            accion={accion}
+            modulo={modulo}
+            modulos={modulos.filter((m) => m.predefinido !== "personal")}
+            campos={campos}
+            onListo={terminarAccion}
+            onCancelar={() => setAccion(null)}
+            onSesionVencida={sesionVencida}
+          />
+        )}
+
+        {tabla !== null && campos !== null && permisos.crear && !accion && (
           <AgregarRegistro
             modulo={modulo}
+            modulos={modulos}
             campos={campos}
             onCreado={alCrearRegistro}
             onSesionVencida={sesionVencida}
@@ -649,8 +764,23 @@ function Gestor({ usuario, negocio }: { usuario: Usuario; negocio: NegocioGuarda
           <VistaModulo
             key={modulo.id}
             modulo={modulo}
+            modulos={modulos ?? []}
             negocio={negocio}
-            puedeAgregar={puedeCrearEn(usuario, modulo.id)}
+            // Personal solo lo gestiona el dueño; en el resto manda el permiso de cada módulo.
+            permisos={{
+              crear:
+                modulo.predefinido === "personal"
+                  ? usuario.tipo === "DUENO"
+                  : puedeEn(usuario, modulo.id, "crear"),
+              editar:
+                modulo.predefinido === "personal"
+                  ? usuario.tipo === "DUENO"
+                  : puedeEn(usuario, modulo.id, "editar"),
+              eliminar:
+                modulo.predefinido === "personal"
+                  ? usuario.tipo === "DUENO"
+                  : puedeEn(usuario, modulo.id, "eliminar"),
+            }}
             onSesionVencida={salir}
           />
         )}

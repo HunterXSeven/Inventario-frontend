@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { Campo } from "@/lib/gestor";
+import type { Campo, Modulo } from "@/lib/gestor";
 import {
   aNumero,
   cuerpoProducto,
@@ -112,5 +112,36 @@ describe("registros: módulos personalizados", () => {
     expect(validarRegistro(campos, { c11: "2.5" })).toMatchObject({ ok: false });
     expect(validarRegistro(campos, { c12: "x" })).toMatchObject({ ok: false });
     expect(validarRegistro(campos, { c10: "ok" })).toEqual({ ok: true });
+  });
+});
+
+import { cambiarPermiso, cuerpoPermisos, filasIniciales, validarPersonal } from "@/lib/personal";
+
+describe("personal y permisos", () => {
+  const modulos: Modulo[] = [
+    { id: 1, nombre: "Productos", predefinido: "productos", ocultable: false, visible: true },
+    { id: 4, nombre: "Personal", predefinido: "personal", ocultable: true, visible: true },
+  ];
+
+  it("la matriz excluye Personal y empieza sin permisos", () => {
+    const filas = filasIniciales(modulos);
+    expect(filas).toHaveLength(1);
+    expect(cuerpoPermisos(filas)).toEqual([]);
+  });
+
+  it("crear/editar/eliminar activan ver y quitar ver lo apaga todo", () => {
+    const f = filasIniciales(modulos)[0]!;
+    const conCrear = cambiarPermiso(f, "crear", true);
+    expect(conCrear).toMatchObject({ ver: true, crear: true });
+    expect(cambiarPermiso(conCrear, "ver", false)).toMatchObject({ ver: false, crear: false });
+    expect(cambiarPermiso(conCrear, "crear", false)).toMatchObject({ ver: true, crear: false });
+  });
+
+  it("valida nombre, correo y contraseña", () => {
+    const ok = { nombre: "Luis", dni: "", correo: "luis@correo.com", contrasena: "clave1234" };
+    expect(validarPersonal(ok)).toEqual({ ok: true });
+    expect(validarPersonal({ ...ok, nombre: " " })).toMatchObject({ ok: false });
+    expect(validarPersonal({ ...ok, correo: "luis" })).toMatchObject({ ok: false });
+    expect(validarPersonal({ ...ok, contrasena: "1234567" })).toMatchObject({ ok: false });
   });
 });

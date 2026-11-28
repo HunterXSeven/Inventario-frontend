@@ -40,10 +40,17 @@ export interface Usuario {
 }
 
 /** El dueño siempre puede; el personal, solo si su permiso del módulo lo marca. */
-export function puedeCrearEn(usuario: Usuario, idmodulo: number): boolean {
+export function puedeEn(
+  usuario: Usuario,
+  idmodulo: number,
+  accion: "crear" | "editar" | "eliminar",
+): boolean {
   if (usuario.tipo === "DUENO") return true;
-  return usuario.permisos.some((p) => p.idmodulo === idmodulo && p.crear);
+  return usuario.permisos.some((p) => p.idmodulo === idmodulo && p[accion]);
 }
+
+export const puedeCrearEn = (usuario: Usuario, idmodulo: number): boolean =>
+  puedeEn(usuario, idmodulo, "crear");
 
 export type ResultadoAcceso =
   { ok: true; usuario: Usuario } | { ok: false; campo: "correo" | "general"; error: string };

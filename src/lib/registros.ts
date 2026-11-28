@@ -8,12 +8,7 @@
  * - Personalizados: POST /modulos/{id}/registros  ({ datos: { "idCampo": valor } })
  */
 import { api } from "@/lib/api";
-import type { Campo, Modulo } from "@/lib/gestor";
-
-/** ¿Este módulo tiene formulario de alta? (Personal se registra aparte, con sus permisos.) */
-export function admiteAgregar(modulo: Modulo): boolean {
-  return modulo.predefinido !== "personal";
-}
+import type { Campo } from "@/lib/gestor";
 
 export type Valores = Record<string, string>;
 
@@ -64,7 +59,7 @@ export function validarProducto(campos: Campo[], valores: Valores): Validacion {
         if (vacio(v)) return { ok: false, error: `${c.nombre} es obligatorio.` };
         break;
       case "precio": {
-        if (vacio(v)) break;
+        if (vacio(v)) return { ok: false, error: `${c.nombre} es obligatorio.` };
         const n = aNumero(v);
         if (n === null || n < 0)
           return { ok: false, error: `${c.nombre} debe ser un número desde 0.` };

@@ -2,6 +2,15 @@ import { useEffect, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { AlertaError, claseInput } from "@/components/gestor/comunes";
+import {
+  Botones,
+  Etiqueta,
+  RejillaCampos,
+  TablaPermisos,
+  useEnvio,
+} from "@/components/gestor/formularios";
+import type { PropsForm } from "@/components/gestor/formularios";
+import { ApiError } from "@/lib/api";
 import { mensajeDeError } from "@/lib/gestor";
 import type { Campo, Modulo } from "@/lib/gestor";
 import {
@@ -19,6 +28,14 @@ import {
   validarRegistro,
   validarVenta,
 } from "@/lib/registros";
+import {
+  cambiarPermiso,
+  crearPersonal,
+  filasIniciales,
+  guardarPermisos,
+  validarPersonal,
+} from "@/lib/personal";
+import type { Accion, FilaPermiso } from "@/lib/personal";
 import type {
   LineaVenta,
   OpcionProducto,
@@ -26,26 +43,6 @@ import type {
   Valores,
   Validacion,
 } from "@/lib/registros";
-
-function Etiqueta({
-  texto,
-  obligatorio,
-  children,
-}: {
-  texto: string;
-  obligatorio?: boolean;
-  children: ReactNode;
-}) {
-  return (
-    <label className="block text-sm">
-      <span className="mb-1 block font-medium text-foreground">
-        {texto}
-        {obligatorio && <span className="text-destructive"> *</span>}
-      </span>
-      {children}
-    </label>
-  );
-}
 
 const soles = (n: number) => `S/ ${n.toFixed(2)}`;
 
@@ -55,11 +52,14 @@ const soles = (n: number) => `S/ ${n.toFixed(2)}`;
 
 export function AgregarRegistro({
   modulo,
+  modulos,
   campos,
   onCreado,
   onSesionVencida,
 }: {
   modulo: Modulo;
+  /** Módulos del menú: Personal los usa para elegir los permisos. */
+  modulos: Modulo[];
   campos: Campo[];
   /** Se llama tras guardar, para recargar la tabla. */
   onCreado: () => void;
@@ -121,6 +121,14 @@ export function AgregarRegistro({
             onCancelar={() => terminar(null)}
             onSesionVencida={onSesionVencida}
           />
+        ) : modulo.predefinido === "personal" ? (
+          <FormPersonal
+            campos={campos}
+            modulos={modulos}
+            onListo={() => terminar("Empleado registrado.")}
+            onCancelar={() => terminar(null)}
+            onSesionVencida={onSesionVencida}
+          />
         ) : (
           <FormPersonalizado
             modulo={modulo}
@@ -131,132 +139,6 @@ export function AgregarRegistro({
           />
         )}
       </div>
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------
-   Piezas comunes de los formularios
-   ------------------------------------------------------------ */
-
-interface PropsForm {
-  onListo: () => void;
-  onCancelar: () => void;
-  /** Devuelve true si el error era de sesión vencida (ya se maneja fuera). */
-  onSesionVencida: (e: unknown) => boolean;
-}
-
-/** Estado y envío compartidos: valida, muestra errores y evita el doble clic. */
-function useEnvio({ onListo, onSesionVencida }: PropsForm) {
-  const [error, setError] = useState<string | null>(null);
-  const [enviando, setEnviando] = useState(false);
-
-  const enviar = async (validacion: Validacion, accion: () => Promise<void>) => {
-    if (enviando) return;
-    if (!validacion.ok) {
-      setError(validacion.error);
-      return;
-    }
-    setError(null);
-    setEnviando(true);
-    try {
-      await accion();
-      onListo();
-    } catch (e) {
-      setEnviando(false);
-      if (!onSesionVencida(e)) setError(mensajeDeError(e));
-    }
-  };
-
-  return { error, enviando, enviar };
-}
-
-function Botones({ enviando, onCancelar }: { enviando: boolean; onCancelar: () => void }) {
-  return (
-    <div className="flex flex-wrap items-center gap-3 pt-2">
-      <button
-        type="submit"
-        disabled={enviando}
-        className="rounded-full bg-primary px-6 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
-      >
-        {enviando ? "Guardando…" : "Guardar"}
-      </button>
-      <button
-        type="button"
-        onClick={onCancelar}
-        disabled={enviando}
-        className="rounded-full border border-border bg-card px-6 py-2.5 text-sm font-semibold text-foreground transition-colors hover:border-primary/40 disabled:opacity-60"
-      >
-        Cancelar
-      </button>
-    </div>
-  );
-}
-
-function CampoEntrada({
-  campo,
-  valor,
-  onCambio,
-  nombreClave,
-}: {
-  campo: Campo;
-  valor: string;
-  onCambio: (v: string) => void;
-  nombreClave: string;
-}) {
-  const tipo =
-    campo.tipo === "fecha"
-      ? "date"
-      : campo.tipo === "numero" || campo.tipo === "decimal" || campo.columna === "precio"
-        ? "number"
-        : campo.tipo === "imagen"
-          ? "url"
-          : "text";
-  const paso =
-    campo.tipo === "decimal" || campo.columna === "precio"
-      ? "0.01"
-      : tipo === "number"
-        ? "1"
-        : undefined;
-  return (
-    <Etiqueta texto={campo.nombre} obligatorio={campo.columna === "nombreProducto"}>
-      <input
-        name={nombreClave}
-        type={tipo}
-        step={paso}
-        min={tipo === "number" && campo.columna !== null ? 0 : undefined}
-        inputMode={tipo === "number" ? "decimal" : undefined}
-        placeholder={campo.tipo === "imagen" ? "https://…" : undefined}
-        value={valor}
-        onChange={(e) => onCambio(e.target.value)}
-        className={claseInput}
-      />
-    </Etiqueta>
-  );
-}
-
-function RejillaCampos({
-  campos,
-  valores,
-  clave,
-  onCambio,
-}: {
-  campos: Campo[];
-  valores: Valores;
-  clave: (c: Campo) => string;
-  onCambio: (clave: string, valor: string) => void;
-}) {
-  return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {campos.map((c) => (
-        <CampoEntrada
-          key={c.id}
-          campo={c}
-          nombreClave={clave(c)}
-          valor={valores[clave(c)] ?? ""}
-          onCambio={(v) => onCambio(clave(c), v)}
-        />
-      ))}
     </div>
   );
 }
@@ -305,7 +187,13 @@ function useProductos(onSesionVencida: (e: unknown) => boolean): Productos {
       .then((lista) => vigente && setProductos({ estado: "listo", lista }))
       .catch((e: unknown) => {
         if (!vigente || onSesionVencida(e)) return;
-        setProductos({ estado: "error", mensaje: mensajeDeError(e) });
+        setProductos({
+          estado: "error",
+          mensaje:
+            e instanceof ApiError && e.status === 403
+              ? "Para elegir productos necesitas también permiso de ver el módulo Productos. Pídeselo al dueño."
+              : mensajeDeError(e),
+        });
       });
     return () => {
       vigente = false;
@@ -590,6 +478,111 @@ function FormPersonalizado({
         clave={(c) => `c${c.id}`}
         onCambio={(k, v) => setValores((a) => ({ ...a, [k]: v }))}
       />
+      {error && <AlertaError mensaje={error} />}
+      <Botones enviando={enviando} onCancelar={props.onCancelar} />
+    </form>
+  );
+}
+
+/* ------------------------------------------------------------
+   Personal: datos de la cuenta + permisos por módulo
+   ------------------------------------------------------------ */
+
+function FormPersonal({
+  campos,
+  modulos,
+  ...props
+}: PropsForm & { campos: Campo[]; modulos: Modulo[] }) {
+  const [datos, setDatos] = useState({ nombre: "", dni: "", correo: "", contrasena: "" });
+  const [filas, setFilas] = useState<FilaPermiso[]>(() => filasIniciales(modulos));
+  // Si el empleado se creó pero fallaron los permisos, un reintento no lo crea otra vez.
+  const [creadoId, setCreadoId] = useState<number | null>(null);
+  const { error, enviando, enviar } = useEnvio(props);
+
+  const etiquetaDe = (columna: string, respaldo: string) =>
+    campos.find((c) => c.columna === columna)?.nombre ?? respaldo;
+  const dniVisible = campos.some((c) => c.columna === "dni");
+
+  const cambiar = (idmodulo: number, accion: Accion, valor: boolean) =>
+    setFilas((fs) =>
+      fs.map((f) => (f.idmodulo === idmodulo ? cambiarPermiso(f, accion, valor) : f)),
+    );
+
+  const alEnviar = (e: FormEvent) => {
+    e.preventDefault();
+    void enviar(creadoId === null ? validarPersonal(datos) : { ok: true }, async () => {
+      let id = creadoId;
+      if (id === null) {
+        id = await crearPersonal(datos);
+        setCreadoId(id);
+      }
+      try {
+        await guardarPermisos(id, filas);
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 401) throw err;
+        throw new ApiError(
+          0,
+          `El empleado ya se registró, pero no pudimos guardar sus permisos: ${mensajeDeError(err)} Pulsa Guardar para reintentar.`,
+        );
+      }
+    });
+  };
+
+  const bloqueado = creadoId !== null;
+
+  return (
+    <form onSubmit={alEnviar} noValidate className="space-y-5">
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Etiqueta texto={etiquetaDe("nombre", "Nombre")} obligatorio>
+          <input
+            type="text"
+            aria-label={etiquetaDe("nombre", "Nombre")}
+            value={datos.nombre}
+            disabled={bloqueado}
+            onChange={(e) => setDatos((d) => ({ ...d, nombre: e.target.value }))}
+            className={claseInput}
+          />
+        </Etiqueta>
+        {dniVisible && (
+          <Etiqueta texto={etiquetaDe("dni", "DNI")}>
+            <input
+              type="text"
+              aria-label={etiquetaDe("dni", "DNI")}
+              inputMode="numeric"
+              value={datos.dni}
+              disabled={bloqueado}
+              onChange={(e) => setDatos((d) => ({ ...d, dni: e.target.value }))}
+              className={claseInput}
+            />
+          </Etiqueta>
+        )}
+        <Etiqueta texto={etiquetaDe("correo", "Correo")} obligatorio>
+          <input
+            type="email"
+            aria-label={etiquetaDe("correo", "Correo")}
+            autoComplete="off"
+            value={datos.correo}
+            disabled={bloqueado}
+            onChange={(e) => setDatos((d) => ({ ...d, correo: e.target.value }))}
+            className={claseInput}
+          />
+        </Etiqueta>
+        <Etiqueta texto="Contraseña" obligatorio>
+          <input
+            type="password"
+            aria-label="Contraseña"
+            autoComplete="new-password"
+            placeholder="Mínimo 8 caracteres"
+            value={datos.contrasena}
+            disabled={bloqueado}
+            onChange={(e) => setDatos((d) => ({ ...d, contrasena: e.target.value }))}
+            className={claseInput}
+          />
+        </Etiqueta>
+      </div>
+
+      <TablaPermisos filas={filas} onCambio={cambiar} />
+
       {error && <AlertaError mensaje={error} />}
       <Botones enviando={enviando} onCancelar={props.onCancelar} />
     </form>
