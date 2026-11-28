@@ -139,7 +139,7 @@ describe("personal y permisos", () => {
   });
 
   it("valida nombre, correo y contraseña", () => {
-    const ok = { nombre: "Luis", dni: "", correo: "luis@correo.com", contrasena: "clave1234" };
+    const ok = { nombre: "Luis", dni: "", correo: "luis@correo.com", contrasena: "Clave1234" };
     expect(validarPersonal(ok)).toEqual({ ok: true });
     expect(validarPersonal({ ...ok, nombre: " " })).toMatchObject({ ok: false });
     expect(validarPersonal({ ...ok, correo: "luis" })).toMatchObject({ ok: false });

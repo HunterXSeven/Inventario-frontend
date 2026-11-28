@@ -308,7 +308,10 @@ describe("Agregar registros", () => {
 
     fireEvent.change(await screen.findByLabelText("Nombre"), { target: { value: "Luis" } });
     fireEvent.change(screen.getByLabelText("Correo"), { target: { value: "luis@correo.com" } });
-    fireEvent.change(screen.getByLabelText("Contraseña"), { target: { value: "clave1234" } });
+    fireEvent.change(screen.getByLabelText("Contraseña"), { target: { value: "Clave1234" } });
+    fireEvent.change(screen.getByLabelText("Confirmar contraseña"), {
+      target: { value: "Clave1234" },
+    });
     // Registrar en Ventas activa también Ver; Eliminar en Productos activa Ver.
     fireEvent.click(screen.getByLabelText("Registrar en Ventas"));
     fireEvent.click(screen.getByLabelText("Eliminar en Productos"));
@@ -322,7 +325,7 @@ describe("Agregar registros", () => {
     expect(posts).toEqual([
       {
         ruta: "/personal",
-        cuerpo: { nombre: "Luis", correo: "luis@correo.com", contrasena: "clave1234" },
+        cuerpo: { nombre: "Luis", correo: "luis@correo.com", contrasena: "Clave1234" },
       },
       {
         ruta: "PUT /personal/5/permisos",
@@ -378,6 +381,43 @@ describe("Agregar registros", () => {
     expect(posts).toHaveLength(0);
   });
 
+  it("al crear personal exige mayúscula, minúscula y número, y que la confirmación coincida", async () => {
+    const posts = simular();
+    abrir("/panel");
+    await screen.findByText("Cemento");
+    fireEvent.click(screen.getByRole("button", { name: "Personal" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Agregar registro/ }));
+    fireEvent.change(await screen.findByLabelText("Nombre"), { target: { value: "Luis" } });
+    fireEvent.change(screen.getByLabelText("Correo"), { target: { value: "luis@correo.com" } });
+
+    fireEvent.change(screen.getByLabelText("Contraseña"), { target: { value: "clave1234" } });
+    fireEvent.change(screen.getByLabelText("Confirmar contraseña"), {
+      target: { value: "clave1234" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("una mayúscula");
+
+    fireEvent.change(screen.getByLabelText("Contraseña"), { target: { value: "Clave1234" } });
+    fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("no coinciden");
+    expect(posts).toHaveLength(0);
+  });
+
+  it("el ojo muestra y oculta lo que se escribe en la contraseña", async () => {
+    simular();
+    abrir("/panel");
+    await screen.findByText("Cemento");
+    fireEvent.click(screen.getByRole("button", { name: "Personal" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Agregar registro/ }));
+
+    const campo = await screen.findByLabelText("Contraseña");
+    expect(campo).toHaveAttribute("type", "password");
+    fireEvent.click(screen.getByRole("button", { name: "Mostrar contraseña" }));
+    expect(campo).toHaveAttribute("type", "text");
+    fireEvent.click(screen.getByRole("button", { name: "Ocultar contraseña" }));
+    expect(campo).toHaveAttribute("type", "password");
+  });
+
   it("si fallan los permisos, el reintento no vuelve a crear al empleado", async () => {
     const posts = simular();
     const original = globalThis.fetch;
@@ -394,7 +434,10 @@ describe("Agregar registros", () => {
 
     fireEvent.change(await screen.findByLabelText("Nombre"), { target: { value: "Luis" } });
     fireEvent.change(screen.getByLabelText("Correo"), { target: { value: "luis@correo.com" } });
-    fireEvent.change(screen.getByLabelText("Contraseña"), { target: { value: "clave1234" } });
+    fireEvent.change(screen.getByLabelText("Contraseña"), { target: { value: "Clave1234" } });
+    fireEvent.change(screen.getByLabelText("Confirmar contraseña"), {
+      target: { value: "Clave1234" },
+    });
     fireEvent.click(screen.getByLabelText("Ver en Productos"));
     fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("ya se registró");
@@ -603,7 +646,10 @@ describe("Editar y eliminar", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("al menos 8");
-    fireEvent.change(screen.getByLabelText("Nueva contraseña"), { target: { value: "nueva1234" } });
+    fireEvent.change(screen.getByLabelText("Nueva contraseña"), { target: { value: "Nueva1234" } });
+    fireEvent.change(screen.getByLabelText("Confirmar contraseña"), {
+      target: { value: "Nueva1234" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
     expect(await screen.findByText("Contraseña de Ana actualizada.")).toBeInTheDocument();
 
@@ -616,7 +662,7 @@ describe("Editar y eliminar", () => {
         ruta: "PUT /personal/5",
         cuerpo: { nombre: "Ana", correo: "ana@nuevo.com", dni: "12345678" },
       },
-      { ruta: "PUT /personal/5/contrasena", cuerpo: { contrasena: "nueva1234" } },
+      { ruta: "PUT /personal/5/contrasena", cuerpo: { contrasena: "Nueva1234" } },
       { ruta: "DELETE /personal/5", cuerpo: null },
     ]);
   });

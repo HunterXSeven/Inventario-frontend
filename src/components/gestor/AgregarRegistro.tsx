@@ -10,6 +10,7 @@ import {
   useEnvio,
 } from "@/components/gestor/formularios";
 import type { PropsForm } from "@/components/gestor/formularios";
+import { EntradaContrasena, ReglasContrasena } from "@/components/gestor/EntradaContrasena";
 import { ApiError } from "@/lib/api";
 import { mensajeDeError } from "@/lib/gestor";
 import type { Campo, Modulo } from "@/lib/gestor";
@@ -47,55 +48,38 @@ import type {
 const soles = (n: number) => `S/ ${n.toFixed(2)}`;
 
 /* ------------------------------------------------------------
-   Contenedor: la fila "Agregar registro" y el formulario que abre
+   Botón "Agregar registro" (va en la barra de arriba) y formulario que abre
    ------------------------------------------------------------ */
+
+export function BotonAgregar({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex items-center gap-1.5 rounded-full bg-principal px-4 py-2 text-sm font-semibold text-principal-fg shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
+    >
+      <Plus className="size-4" />
+      Agregar registro
+    </button>
+  );
+}
 
 export function AgregarRegistro({
   modulo,
   modulos,
   campos,
-  onCreado,
+  onTerminar,
   onSesionVencida,
 }: {
   modulo: Modulo;
   /** Módulos del menú: Personal los usa para elegir los permisos. */
   modulos: Modulo[];
   campos: Campo[];
-  /** Se llama tras guardar, para recargar la tabla. */
-  onCreado: () => void;
+  /** Se llama al guardar (con el mensaje de éxito) o al cancelar (null). */
+  onTerminar: (mensaje: string | null) => void;
   onSesionVencida: (e: unknown) => boolean;
 }) {
-  const [abierto, setAbierto] = useState(false);
-  const [aviso, setAviso] = useState<string | null>(null);
-
-  if (!abierto) {
-    return (
-      <div className="border-t border-border">
-        {aviso && (
-          <p role="status" className="px-4 pt-3 text-sm font-medium text-primary">
-            {aviso}
-          </p>
-        )}
-        <button
-          type="button"
-          onClick={() => {
-            setAviso(null);
-            setAbierto(true);
-          }}
-          className="flex w-full items-center gap-2 px-4 py-3 text-sm font-semibold text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground"
-        >
-          <Plus className="size-4" />
-          Agregar registro
-        </button>
-      </div>
-    );
-  }
-
-  const terminar = (mensaje: string | null) => {
-    setAbierto(false);
-    setAviso(mensaje);
-    if (mensaje) onCreado();
-  };
+  const terminar = onTerminar;
 
   return (
     <div className="border-t border-border bg-muted/20 px-4 py-5 sm:px-6">
@@ -497,6 +481,7 @@ function FormPersonal({
   ...props
 }: PropsForm & { campos: Campo[]; modulos: Modulo[] }) {
   const [datos, setDatos] = useState({ nombre: "", dni: "", correo: "", contrasena: "" });
+  const [confirmar, setConfirmar] = useState("");
   const [filas, setFilas] = useState<FilaPermiso[]>(() => filasIniciales(modulos));
   // Si el empleado se creó pero fallaron los permisos, un reintento no lo crea otra vez.
   const [creadoId, setCreadoId] = useState<number | null>(null);
@@ -513,7 +498,7 @@ function FormPersonal({
 
   const alEnviar = (e: FormEvent) => {
     e.preventDefault();
-    void enviar(creadoId === null ? validarPersonal(datos) : { ok: true }, async () => {
+    void enviar(creadoId === null ? validarPersonal(datos, confirmar) : { ok: true }, async () => {
       let id = creadoId;
       if (id === null) {
         id = await crearPersonal(datos);
@@ -570,16 +555,24 @@ function FormPersonal({
             className={claseInput}
           />
         </Etiqueta>
-        <Etiqueta texto="Contraseña" obligatorio>
-          <input
-            type="password"
-            aria-label="Contraseña"
-            autoComplete="new-password"
-            placeholder="Mínimo 8 caracteres"
-            value={datos.contrasena}
-            disabled={bloqueado}
-            onChange={(e) => setDatos((d) => ({ ...d, contrasena: e.target.value }))}
-            className={claseInput}
+        <div>
+          <Etiqueta texto="Contraseña" obligatorio>
+            <EntradaContrasena
+              etiqueta="Contraseña"
+              valor={datos.contrasena}
+              bloqueado={bloqueado}
+              onCambio={(v) => setDatos((d) => ({ ...d, contrasena: v }))}
+            />
+          </Etiqueta>
+          <ReglasContrasena contrasena={datos.contrasena} />
+        </div>
+        <Etiqueta texto="Confirmar contraseña" obligatorio>
+          <EntradaContrasena
+            etiqueta="Confirmar contraseña"
+            valor={confirmar}
+            bloqueado={bloqueado}
+            placeholder="Repite la contraseña"
+            onCambio={setConfirmar}
           />
         </Etiqueta>
       </div>

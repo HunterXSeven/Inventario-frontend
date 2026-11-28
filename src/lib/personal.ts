@@ -9,6 +9,7 @@
 import { api } from "@/lib/api";
 import type { Modulo } from "@/lib/gestor";
 import type { Validacion } from "@/lib/registros";
+import { validarConfirmacion, validarContrasena } from "@/lib/contrasena";
 
 export type Accion = "ver" | "crear" | "editar" | "eliminar";
 export const ACCIONES: Accion[] = ["ver", "crear", "editar", "eliminar"];
@@ -70,17 +71,14 @@ export function validarDatosPersonal(d: Omit<DatosPersonal, "contrasena">): Vali
   return { ok: true };
 }
 
-export function validarContrasena(contrasena: string): Validacion {
-  if (contrasena.length < 8)
-    return { ok: false, error: "La contraseña debe tener al menos 8 caracteres." };
-  if (new TextEncoder().encode(contrasena).length > 72)
-    return { ok: false, error: "La contraseña es demasiado larga." };
-  return { ok: true };
-}
+export { validarContrasena } from "@/lib/contrasena";
 
-export function validarPersonal(d: DatosPersonal): Validacion {
+export function validarPersonal(d: DatosPersonal, confirmar?: string): Validacion {
   const datos = validarDatosPersonal(d);
-  return datos.ok ? validarContrasena(d.contrasena) : datos;
+  if (!datos.ok) return datos;
+  return confirmar === undefined
+    ? validarContrasena(d.contrasena)
+    : validarConfirmacion(d.contrasena, confirmar);
 }
 
 interface PersonalCreadoApi {

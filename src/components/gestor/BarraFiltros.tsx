@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type { ReactNode } from "react";
 import type { FormEvent } from "react";
 import { cn } from "@/lib/utils";
 import { claseInput } from "@/components/gestor/comunes";
@@ -26,19 +27,23 @@ export function tieneFiltros(modulo: Modulo, campos: Campo[]): boolean {
 const claseBoton =
   "rounded-full border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground transition-colors hover:border-primary/40";
 const claseBotonPrimario =
-  "rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md";
+  "rounded-full bg-sec px-4 py-2 text-sm font-semibold text-sec-fg shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md";
 
 export function BarraFiltros({
   modulo,
   campos,
   consulta,
   onCambiar,
+  accion,
 }: {
   modulo: Modulo;
   campos: Campo[];
   consulta: Consulta;
   onCambiar: (c: Consulta) => void;
+  /** Botón de la derecha (Agregar registro). */
+  accion?: ReactNode;
 }) {
+  const derecha = accion ? <div className="ml-auto self-center">{accion}</div> : null;
   switch (modulo.predefinido) {
     case "productos":
       return (
@@ -59,15 +64,25 @@ export function BarraFiltros({
               Productos con el stock en el mínimo o por debajo.
             </span>
           )}
+          {derecha}
         </div>
       );
     case "ventas":
     case "movimientos":
-      return <FiltroFechas modulo={modulo} consulta={consulta} onCambiar={onCambiar} />;
+      return (
+        <FiltroFechas modulo={modulo} consulta={consulta} onCambiar={onCambiar} derecha={derecha} />
+      );
     case "personal":
       return null;
     default:
-      return <FiltroPorCampo campos={campos} consulta={consulta} onCambiar={onCambiar} />;
+      return (
+        <FiltroPorCampo
+          campos={campos}
+          consulta={consulta}
+          onCambiar={onCambiar}
+          derecha={derecha}
+        />
+      );
   }
 }
 
@@ -79,10 +94,12 @@ function FiltroFechas({
   modulo,
   consulta,
   onCambiar,
+  derecha,
 }: {
   modulo: Modulo;
   consulta: Consulta;
   onCambiar: (c: Consulta) => void;
+  derecha: ReactNode;
 }) {
   const [desde, setDesde] = useState(consulta.desde ?? "");
   const [hasta, setHasta] = useState(consulta.hasta ?? "");
@@ -141,6 +158,7 @@ function FiltroFechas({
       <button type="button" onClick={verHoy} className={claseBoton}>
         Hoy
       </button>
+      {derecha}
       <p className="basis-full text-xs text-muted-foreground">
         {hayConsulta(consulta)
           ? "Mostrando el rango elegido."
@@ -163,10 +181,12 @@ function FiltroPorCampo({
   campos,
   consulta,
   onCambiar,
+  derecha,
 }: {
   campos: Campo[];
   consulta: Consulta;
   onCambiar: (c: Consulta) => void;
+  derecha: ReactNode;
 }) {
   const filtrables = camposFiltrables(campos);
   const actual = consulta.filtro ?? null;
@@ -290,6 +310,7 @@ function FiltroPorCampo({
           Quitar filtro
         </button>
       )}
+      {derecha}
       {error && (
         <p role="alert" className="basis-full text-sm text-destructive">
           {error}

@@ -1,3 +1,5 @@
+import { ReglasContrasena } from "@/components/gestor/EntradaContrasena";
+import { validarContrasena } from "@/lib/contrasena";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { AlertCircle, ArrowLeft, Eye, EyeOff, PackageCheck } from "lucide-react";
@@ -61,7 +63,8 @@ export function validarRegistroCuenta(c: Campos): Errores {
   if (!c.nombre.trim()) errores.nombre = "Escribe tu nombre completo.";
   const errorCorreo = validarCorreo(c.correo);
   if (errorCorreo) errores.correo = errorCorreo;
-  if (c.contrasena.length < 8) errores.contrasena = "Usa al menos 8 caracteres.";
+  const clave = validarContrasena(c.contrasena);
+  if (!clave.ok) errores.contrasena = clave.error;
   if (!c.confirmar) errores.confirmar = "Repite tu contraseña.";
   else if (c.confirmar !== c.contrasena) errores.confirmar = "Las contraseñas no coinciden.";
   return errores;
@@ -309,6 +312,7 @@ function Login() {
                     />
                     {botonContrasena}
                   </div>
+                  {!esLogin && <ReglasContrasena contrasena={campos.contrasena} />}
                 </Campo>
 
                 {!esLogin && (

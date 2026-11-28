@@ -33,6 +33,11 @@
   --color-card-foreground: var(--card-foreground);
   --color-popover: var(--popover);
   --color-popover-foreground: var(--popover-foreground);
+  /* Colores del negocio: el panel los define; fuera de él se usa el azul del tema. */
+  --color-principal: var(--negocio-principal, var(--primary));
+  --color-principal-fg: var(--negocio-principal-fg, var(--primary-foreground));
+  --color-sec: var(--negocio-sec, var(--primary));
+  --color-sec-fg: var(--negocio-sec-fg, var(--primary-foreground));
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
   --color-secondary: var(--secondary);

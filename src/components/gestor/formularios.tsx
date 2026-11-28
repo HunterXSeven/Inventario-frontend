@@ -72,7 +72,7 @@ export function Botones({ enviando, onCancelar }: { enviando: boolean; onCancela
       <button
         type="submit"
         disabled={enviando}
-        className="rounded-full bg-primary px-6 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+        className="rounded-full bg-sec px-6 py-2.5 text-sm font-semibold text-sec-fg shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
       >
         {enviando ? "Guardando…" : "Guardar"}
       </button>

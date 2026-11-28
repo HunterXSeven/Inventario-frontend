@@ -1,3 +1,5 @@
+import { EntradaContrasena, ReglasContrasena } from "@/components/gestor/EntradaContrasena";
+import { validarConfirmacion } from "@/lib/contrasena";
 import { useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import type { FormEvent } from "react";
@@ -28,7 +30,7 @@ import { cargarHistorial, cargarVenta } from "@/lib/consultas";
 import type { DetalleDeVenta, HistorialDeProducto } from "@/lib/consultas";
 import { formatearCelda, mensajeDeError } from "@/lib/gestor";
 import type { Campo, FilaTabla, Modulo } from "@/lib/gestor";
-import { cambiarPermiso, validarContrasena, validarDatosPersonal } from "@/lib/personal";
+import { cambiarPermiso, validarDatosPersonal } from "@/lib/personal";
 import type { Accion } from "@/lib/personal";
 import { claveCampo, datosDeRegistro, validarProducto, validarRegistro } from "@/lib/registros";
 import type { Valores } from "@/lib/registros";
@@ -370,25 +372,35 @@ function FormEditarPersonal({
 
 function FormClave({ fila, ...props }: PropsForm & { fila: FilaTabla }) {
   const [contrasena, setContrasena] = useState("");
+  const [confirmar, setConfirmar] = useState("");
   const { error, enviando, enviar } = useEnvio(props);
 
   const alEnviar = (e: FormEvent) => {
     e.preventDefault();
-    void enviar(validarContrasena(contrasena), () => cambiarContrasena(fila.id, contrasena));
+    void enviar(validarConfirmacion(contrasena, confirmar), () =>
+      cambiarContrasena(fila.id, contrasena),
+    );
   };
 
   return (
     <form onSubmit={alEnviar} noValidate className="space-y-4">
-      <div className="max-w-sm">
-        <Etiqueta texto="Nueva contraseña" obligatorio>
-          <input
-            type="password"
-            aria-label="Nueva contraseña"
-            autoComplete="new-password"
-            placeholder="Mínimo 8 caracteres"
-            value={contrasena}
-            onChange={(e) => setContrasena(e.target.value)}
-            className={claseInput}
+      <div className="grid max-w-2xl gap-4 sm:grid-cols-2">
+        <div>
+          <Etiqueta texto="Nueva contraseña" obligatorio>
+            <EntradaContrasena
+              etiqueta="Nueva contraseña"
+              valor={contrasena}
+              onCambio={setContrasena}
+            />
+          </Etiqueta>
+          <ReglasContrasena contrasena={contrasena} />
+        </div>
+        <Etiqueta texto="Confirmar contraseña" obligatorio>
+          <EntradaContrasena
+            etiqueta="Confirmar contraseña"
+            valor={confirmar}
+            placeholder="Repite la contraseña"
+            onCambio={setConfirmar}
           />
         </Etiqueta>
       </div>

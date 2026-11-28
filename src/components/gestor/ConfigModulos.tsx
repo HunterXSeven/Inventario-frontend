@@ -169,7 +169,7 @@ export function ConfigModulos({
           <button
             type="submit"
             disabled={guardando}
-            className="rounded-full bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-60"
+            className="rounded-full bg-sec px-5 py-2 text-sm font-semibold text-sec-fg disabled:opacity-60"
           >
             {guardando ? "Guardando…" : "Guardar"}
           </button>
@@ -236,7 +236,7 @@ export function ConfigModulos({
                     <button
                       type="submit"
                       disabled={ocupado}
-                      className="rounded-full bg-primary px-4 py-1.5 text-sm font-semibold text-primary-foreground disabled:opacity-60"
+                      className="rounded-full bg-sec px-4 py-1.5 text-sm font-semibold text-sec-fg disabled:opacity-60"
                     >
                       Guardar
                     </button>

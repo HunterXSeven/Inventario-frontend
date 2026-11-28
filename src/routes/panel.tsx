@@ -1,5 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import type { CSSProperties } from "react";
 import {
   AlertCircle,
   KeyRound,
@@ -32,7 +33,7 @@ import { ConfigCampos } from "@/components/gestor/ConfigCampos";
 import { ConfigModulos } from "@/components/gestor/ConfigModulos";
 import { PanelAccion, nombreDeFila } from "@/components/gestor/AccionesFila";
 import type { AccionEnFila, TipoAccion } from "@/components/gestor/AccionesFila";
-import { AgregarRegistro } from "@/components/gestor/AgregarRegistro";
+import { AgregarRegistro, BotonAgregar } from "@/components/gestor/AgregarRegistro";
 import { BarraFiltros, tieneFiltros } from "@/components/gestor/BarraFiltros";
 import { BotonIcono, EtiquetaMovimiento, IconoModulo } from "@/components/gestor/comunes";
 import {
@@ -125,13 +126,13 @@ function TablaRegistros({ tabla, acciones }: { tabla: TablaDatos; acciones?: Acc
     <div className="overflow-x-auto">
       <table className="w-full min-w-max border-collapse text-sm">
         <thead>
-          <tr className="border-b border-border bg-muted/50">
+          <tr className="bg-principal text-principal-fg">
             {tabla.columnas.map((c) => (
               <th
                 key={c.clave}
                 scope="col"
                 className={cn(
-                  "px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground",
+                  "px-4 py-3 text-xs font-semibold uppercase tracking-wide",
                   esNumerica(c) ? "text-right" : "text-left",
                 )}
               >
@@ -147,7 +148,10 @@ function TablaRegistros({ tabla, acciones }: { tabla: TablaDatos; acciones?: Acc
         </thead>
         <tbody>
           {tabla.filas.map((fila) => (
-            <tr key={fila.id} className="border-b border-border/70 last:border-0 hover:bg-muted/30">
+            <tr
+              key={fila.id}
+              className="border-b border-border/70 last:border-0 odd:bg-[color-mix(in_srgb,var(--negocio-sec)_9%,transparent)] hover:bg-[color-mix(in_srgb,var(--negocio-sec)_18%,transparent)]"
+            >
               {tabla.columnas.map((c) => (
                 <td
                   key={c.clave}
@@ -261,6 +265,7 @@ function VistaModulo({
   // Fechas, stock bajo o filtro por campo.
   const [extra, setExtra] = useState<Consulta>(sinConsulta);
   const [aviso, setAviso] = useState<string | null>(null);
+  const [agregando, setAgregando] = useState(false);
 
   const manejarError = (e: unknown) => {
     if (e instanceof ApiError && e.status === 401) onSesionVencida();
@@ -304,10 +309,24 @@ function VistaModulo({
     return false;
   };
 
-  const alCrearRegistro = () => {
-    setPagina(0);
-    setRecarga((n) => n + 1);
+  const terminarAgregar = (mensaje: string | null) => {
+    setAgregando(false);
+    setAviso(mensaje);
+    if (mensaje) {
+      setPagina(0);
+      setRecarga((n) => n + 1);
+    }
   };
+
+  const botonAgregar =
+    permisos.crear && !accion && !agregando ? (
+      <BotonAgregar
+        onClick={() => {
+          setAviso(null);
+          setAgregando(true);
+        }}
+      />
+    ) : null;
 
   const terminarAccion = (mensaje: string) => {
     const tipo = accion?.tipo;
@@ -326,6 +345,7 @@ function VistaModulo({
 
   const cambiarConsulta = (nueva: Consulta) => {
     setAccion(null);
+    setAgregando(false);
     setAviso(null);
     setPagina(0);
     setTabla(null);
@@ -338,15 +358,15 @@ function VistaModulo({
   };
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-10">
+    <div className="px-4 py-5 sm:px-6">
       <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground">
         {negocio.nombre} <span className="mx-1">›</span>{" "}
         <span className="text-foreground">{modulo.nombre}</span>
       </p>
 
-      <div className="mt-4 flex items-center gap-4">
+      <div className="mt-3 flex items-center gap-3">
         <span
-          className="grid size-14 shrink-0 place-items-center rounded-2xl shadow-sm"
+          className="grid size-12 shrink-0 place-items-center rounded-2xl shadow-sm"
           style={{
             backgroundColor: negocio.colorSecundario,
             color: textoSobre(negocio.colorSecundario),
@@ -355,22 +375,30 @@ function VistaModulo({
           <IconoModulo modulo={modulo} className="size-7" />
         </span>
         <div className="min-w-0">
-          <h1 className="truncate text-3xl font-bold tracking-tight text-foreground">
+          <h1 className="truncate text-2xl font-bold tracking-tight text-foreground">
             {modulo.nombre}
           </h1>
-          <p className="mt-1 text-muted-foreground">{descripcionDe(modulo)}</p>
+          <p className="text-sm text-muted-foreground">{descripcionDe(modulo)}</p>
         </div>
       </div>
 
-      <section className="mt-8 overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
-        {campos !== null && tieneFiltros(modulo, campos) && (
-          <BarraFiltros
-            modulo={modulo}
-            campos={campos}
-            consulta={extra}
-            onCambiar={cambiarConsulta}
-          />
-        )}
+      <section className="mt-4 overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+        {campos !== null &&
+          (tieneFiltros(modulo, campos) ? (
+            <BarraFiltros
+              modulo={modulo}
+              campos={campos}
+              consulta={extra}
+              onCambiar={cambiarConsulta}
+              accion={botonAgregar}
+            />
+          ) : (
+            botonAgregar && (
+              <div className="flex justify-end border-b border-border px-4 py-3">
+                {botonAgregar}
+              </div>
+            )
+          ))}
 
         {error && (
           <div
@@ -462,7 +490,7 @@ function VistaModulo({
           </>
         )}
 
-        {aviso && !accion && (
+        {aviso && !accion && !agregando && (
           <p
             role="status"
             className="border-t border-border px-4 pt-3 text-sm font-medium text-primary"
@@ -484,12 +512,12 @@ function VistaModulo({
           />
         )}
 
-        {tabla !== null && campos !== null && permisos.crear && !accion && (
+        {tabla !== null && campos !== null && permisos.crear && !accion && agregando && (
           <AgregarRegistro
             modulo={modulo}
             modulos={modulos}
             campos={campos}
-            onCreado={alCrearRegistro}
+            onTerminar={terminarAgregar}
             onSesionVencida={sesionVencida}
           />
         )}
@@ -703,8 +731,15 @@ function Gestor({ usuario, negocio }: { usuario: Usuario; negocio: NegocioGuarda
     />
   );
 
+  const coloresNegocio = {
+    "--negocio-principal": negocio.colorPrimario,
+    "--negocio-principal-fg": textoSobre(negocio.colorPrimario),
+    "--negocio-sec": negocio.colorSecundario,
+    "--negocio-sec-fg": textoSobre(negocio.colorSecundario),
+  } as CSSProperties;
+
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background" style={coloresNegocio}>
       {/* Barra superior solo en pantallas chicas */}
       <header
         className="sticky top-0 z-30 flex h-14 items-center gap-3 px-4 lg:hidden"
