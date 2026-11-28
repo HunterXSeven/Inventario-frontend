@@ -86,6 +86,18 @@ function mensajeDelCuerpo(datos: unknown): string | null {
   return null;
 }
 
+async function tokenSigueVigente(token: string): Promise<boolean> {
+  try {
+    const r = await fetch(`${URL_BASE}/auth/yo`, {
+      method: "GET",
+      headers: { Accept: "application/json", Authorization: `Bearer ${token}` },
+    });
+    return r.ok;
+  } catch {
+    return false;
+  }
+}
+
 export async function api<T = void>(
   ruta: string,
   { metodo = "GET", cuerpo, conToken = true }: Opciones = {},
@@ -93,14 +105,16 @@ export async function api<T = void>(
   const headers: Record<string, string> = { Accept: "application/json" };
   const token = conToken ? leerToken() : null;
   if (token) headers["Authorization"] = `Bearer ${token}`;
-  if (cuerpo !== undefined) headers["Content-Type"] = "application/json";
+  const esArchivo = typeof FormData !== "undefined" && cuerpo instanceof FormData;
+  // Con FormData el navegador pone solo el Content-Type (multipart + boundary).
+  if (cuerpo !== undefined && !esArchivo) headers["Content-Type"] = "application/json";
 
   let respuesta: Response;
   try {
     respuesta = await fetch(`${URL_BASE}${ruta}`, {
       method: metodo,
       headers,
-      body: cuerpo !== undefined ? JSON.stringify(cuerpo) : null,
+      body: cuerpo === undefined ? null : esArchivo ? (cuerpo as FormData) : JSON.stringify(cuerpo),
     });
   } catch {
     throw new ApiError(
@@ -121,8 +135,15 @@ export async function api<T = void>(
   }
 
   if (!respuesta.ok) {
-    // Un token vencido o inválido no sirve de nada: se descarta.
-    if (respuesta.status === 401 && token) borrarToken();
+    if (respuesta.status === 401 && token) {
+      // Un 401 puede ser un token vencido... o, en este backend, una acción sin permiso
+      // (Spring lo responde como 401 al reenviar el error). Se comprueba con /auth/yo.
+      if (ruta !== "/auth/yo" && (await tokenSigueVigente(token))) {
+        throw new ApiError(403, mensajePorEstado(403));
+      }
+      // Token vencido o inválido: no sirve de nada, se descarta.
+      borrarToken();
+    }
     throw new ApiError(
       respuesta.status,
       mensajeDelCuerpo(datos) ?? mensajePorEstado(respuesta.status),

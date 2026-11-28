@@ -233,12 +233,15 @@ function FormEditarProducto({
   ...props
 }: PropsForm & { campos: Campo[]; fila: FilaTabla }) {
   const [valores, setValores] = useState<Valores>(() => valoresDeFila(campos, fila.celdas));
+  const [archivo, setArchivo] = useState<File | null>(null);
+  const [quitar, setQuitar] = useState(false);
   const { error, enviando, enviar } = useEnvio(props);
+  const urlActual = typeof fila.celdas["imagenurl"] === "string" ? fila.celdas["imagenurl"] : null;
 
   const alEnviar = (e: FormEvent) => {
     e.preventDefault();
     void enviar(validarProducto(campos, valores), () =>
-      editarProducto(fila.id, campos, valores, fila.celdas),
+      editarProducto(fila.id, campos, valores, fila.celdas, { archivo, quitar }),
     );
   };
 
@@ -250,6 +253,13 @@ function FormEditarProducto({
         clave={claveCampo}
         onCambio={(k, v) => setValores((a) => ({ ...a, [k]: v }))}
         bloqueado={(c) => c.columna === "stock"}
+        imagen={{
+          actual: urlActual,
+          archivo,
+          quitar,
+          onArchivo: setArchivo,
+          onQuitar: setQuitar,
+        }}
       />
       {campos.some((c) => c.columna === "stock") && (
         <p className="text-xs text-muted-foreground">

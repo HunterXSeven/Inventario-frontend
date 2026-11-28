@@ -1,3 +1,4 @@
+import { SelectorImagen } from "@/components/gestor/SelectorImagen";
 import { useState } from "react";
 import type { ReactNode } from "react";
 import { AlertaError, claseInput } from "@/components/gestor/comunes";
@@ -138,6 +139,7 @@ export function RejillaCampos({
   clave,
   onCambio,
   bloqueado,
+  imagen,
 }: {
   campos: Campo[];
   valores: Valores;
@@ -145,19 +147,36 @@ export function RejillaCampos({
   onCambio: (clave: string, valor: string) => void;
   /** Campos que se muestran pero no se pueden cambiar (por ejemplo, el stock al editar). */
   bloqueado?: (c: Campo) => boolean;
+  /** Solo en productos: la columna "Imagen" se sube como archivo en vez de pegar un enlace. */
+  imagen?: {
+    actual?: string | null;
+    archivo: File | null;
+    quitar: boolean;
+    onArchivo: (a: File | null) => void;
+    onQuitar: (q: boolean) => void;
+  };
 }) {
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {campos.map((c) => (
-        <CampoEntrada
-          key={c.id}
-          campo={c}
-          nombreClave={clave(c)}
-          valor={valores[clave(c)] ?? ""}
-          onCambio={(v) => onCambio(clave(c), v)}
-          bloqueado={bloqueado?.(c) ?? false}
-        />
-      ))}
+      {campos.map((c) =>
+        imagen && c.columna === "imagenUrl" ? (
+          <SelectorImagen
+            key={c.id}
+            etiqueta={c.nombre}
+            {...imagen}
+            bloqueado={bloqueado?.(c) ?? false}
+          />
+        ) : (
+          <CampoEntrada
+            key={c.id}
+            campo={c}
+            nombreClave={clave(c)}
+            valor={valores[clave(c)] ?? ""}
+            onCambio={(v) => onCambio(clave(c), v)}
+            bloqueado={bloqueado?.(c) ?? false}
+          />
+        ),
+      )}
     </div>
   );
 }

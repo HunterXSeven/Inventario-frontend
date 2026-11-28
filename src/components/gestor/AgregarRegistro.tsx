@@ -149,11 +149,13 @@ export function AgregarRegistro({
 
 function FormProducto({ campos, ...props }: PropsForm & { campos: Campo[] }) {
   const [valores, setValores] = useState<Valores>({});
+  const [archivo, setArchivo] = useState<File | null>(null);
+  const [quitar, setQuitar] = useState(false);
   const { error, enviando, enviar } = useEnvio(props);
 
   const alEnviar = (e: FormEvent) => {
     e.preventDefault();
-    void enviar(validarProducto(campos, valores), () => crearProducto(campos, valores));
+    void enviar(validarProducto(campos, valores), () => crearProducto(campos, valores, archivo));
   };
 
   return (
@@ -163,6 +165,7 @@ function FormProducto({ campos, ...props }: PropsForm & { campos: Campo[] }) {
         valores={valores}
         clave={claveCampo}
         onCambio={(k, v) => setValores((a) => ({ ...a, [k]: v }))}
+        imagen={{ archivo, quitar, onArchivo: setArchivo, onQuitar: setQuitar }}
       />
       {error && <AlertaError mensaje={error} />}
       <Botones enviando={enviando} onCancelar={props.onCancelar} />

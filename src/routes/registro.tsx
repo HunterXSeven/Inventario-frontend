@@ -9,7 +9,9 @@ import {
   PackageCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { SelectorImagen, useVistaArchivo } from "@/components/gestor/SelectorImagen";
 import { guardarNegocio, useSesion } from "@/lib/auth";
+import { validarImagen } from "@/lib/imagenes";
 
 export const Route = createFileRoute("/registro")({
   head: () => ({
@@ -39,8 +41,8 @@ export const Route = createFileRoute("/registro")({
 
 export interface DatosNegocio {
   nombre: string;
-  /** Enlace (URL) a una imagen; el backend guarda solo el enlace. Opcional. */
-  logoUrl: string;
+  /** Logo elegido (se sube a Cloudinary al crear el negocio). Opcional. */
+  logo?: File | null;
   colorPrimario: string;
   colorSecundario: string;
 }
@@ -48,14 +50,7 @@ export interface DatosNegocio {
 const COLOR_PRIMARIO_PREDETERMINADO = "#2563eb";
 const COLOR_SECUNDARIO_PREDETERMINADO = "#16a34a";
 
-const PRESELECCIONES_PRIMARIO = [
-  "#2563eb",
-  "#7c3aed",
-  "#db2777",
-  "#ea580c",
-  "#0d9488",
-  "#475569",
-];
+const PRESELECCIONES_PRIMARIO = ["#2563eb", "#7c3aed", "#db2777", "#ea580c", "#0d9488", "#475569"];
 const PRESELECCIONES_SECUNDARIO = [
   "#16a34a",
   "#0ea5e9",
@@ -83,7 +78,6 @@ type Errores = Record<string, string>;
 
 const datosIniciales: DatosNegocio = {
   nombre: "",
-  logoUrl: "",
   colorPrimario: COLOR_PRIMARIO_PREDETERMINADO,
   colorSecundario: COLOR_SECUNDARIO_PREDETERMINADO,
 };
@@ -111,13 +105,9 @@ export function validarPasoIdentidad(datos: DatosNegocio): Errores {
     errores.nombre = "El nombre no puede superar los 255 caracteres.";
   }
 
-  const logo = datos.logoUrl.trim();
-  if (logo) {
-    if (!/^https?:\/\/\S+$/i.test(logo)) {
-      errores.logoUrl = "Escribe un enlace válido que empiece con http:// o https://.";
-    } else if (logo.length > 255) {
-      errores.logoUrl = "El enlace no puede superar los 255 caracteres.";
-    }
+  if (datos.logo) {
+    const problema = validarImagen(datos.logo);
+    if (problema) errores.logo = problema;
   }
   return errores;
 }
@@ -265,22 +255,14 @@ function PasoIdentidad({
       </div>
 
       <div>
-        <Etiqueta htmlFor="logoUrl" opcional>
-          Logo del negocio (enlace)
-        </Etiqueta>
-        <input
-          id="logoUrl"
-          type="url"
-          inputMode="url"
-          placeholder="https://mi-negocio.com/logo.png"
-          value={datos.logoUrl}
-          onChange={(e) => onCambiar("logoUrl", e.target.value)}
-          className={cn("mt-2", claseInput(!!errores.logoUrl))}
+        <SelectorImagen
+          etiqueta="Logo del negocio (opcional)"
+          archivo={datos.logo ?? null}
+          quitar={false}
+          onArchivo={(a) => onCambiar("logo", a)}
+          onQuitar={() => {}}
         />
-        <p className="mt-1.5 text-xs text-muted-foreground">
-          Pega el enlace de una imagen PNG o JPG que ya esté en internet.
-        </p>
-        {errores.logoUrl && <MensajeError mensaje={errores.logoUrl} />}
+        {errores.logo && <MensajeError mensaje={errores.logo} />}
       </div>
 
       <div className="grid gap-6 sm:grid-cols-2">
@@ -307,7 +289,7 @@ function PasoIdentidad({
 
 function VistaPrevia({ datos }: { datos: DatosNegocio }) {
   const nombreMostrado = datos.nombre.trim() || "Tu negocio";
-  const logo = datos.logoUrl.trim();
+  const logo = useVistaArchivo(datos.logo);
 
   return (
     <aside className="h-fit lg:sticky lg:top-24">
@@ -341,9 +323,7 @@ function VistaPrevia({ datos }: { datos: DatosNegocio }) {
               </span>
             )}
             <div className="min-w-0">
-              <p className="truncate text-base font-semibold text-foreground">
-                {nombreMostrado}
-              </p>
+              <p className="truncate text-base font-semibold text-foreground">{nombreMostrado}</p>
               <p className="text-xs text-muted-foreground">Tu sistema de inventario</p>
             </div>
           </div>
@@ -375,7 +355,9 @@ function FilaResumen({ etiqueta, valor }: { etiqueta: string; valor: string }) {
   return (
     <div className="flex flex-col gap-0.5 border-b border-border/70 py-3 last:border-0 sm:flex-row sm:items-baseline sm:justify-between sm:gap-6">
       <dt className="text-sm text-muted-foreground">{etiqueta}</dt>
-      <dd className="text-sm font-medium text-foreground break-all sm:text-right">{valor || "—"}</dd>
+      <dd className="text-sm font-medium text-foreground break-all sm:text-right">
+        {valor || "—"}
+      </dd>
     </div>
   );
 }
@@ -395,14 +377,12 @@ function PantallaResumen({
   onVolverAEditar: () => void;
   onConfirmar: () => void;
 }) {
-  const logo = datos.logoUrl.trim();
+  const logo = useVistaArchivo(datos.logo);
 
   return (
     <div className="mx-auto max-w-2xl">
       <div className="rounded-2xl border border-border bg-card p-6 shadow-sm sm:p-8">
-        <h2 className="text-2xl font-bold tracking-tight text-foreground">
-          Revisa la información
-        </h2>
+        <h2 className="text-2xl font-bold tracking-tight text-foreground">Revisa la información</h2>
         <p className="mt-2 text-sm text-muted-foreground">
           Antes de confirmar, verifica que todo esté correcto.
         </p>
@@ -435,7 +415,8 @@ function PantallaResumen({
             className="ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold"
             style={{
               backgroundColor: `${datos.colorSecundario}1a`,
-              color: textoSobre(datos.colorSecundario) === "#ffffff" ? datos.colorSecundario : "#1e293b",
+              color:
+                textoSobre(datos.colorSecundario) === "#ffffff" ? datos.colorSecundario : "#1e293b",
             }}
           >
             <span
@@ -448,7 +429,7 @@ function PantallaResumen({
 
         <dl className="mt-4">
           <FilaResumen etiqueta="Nombre del negocio" valor={datos.nombre.trim()} />
-          <FilaResumen etiqueta="Logo" valor={logo} />
+          <FilaResumen etiqueta="Logo" valor={datos.logo?.name ?? ""} />
           <FilaResumen etiqueta="Correo de la cuenta" valor={correo} />
         </dl>
 
@@ -613,12 +594,14 @@ function Registro() {
     if (guardando) return;
     setGuardando(true);
     setErrorGuardar(null);
-    const resultado = await guardarNegocio({
-      nombre: datos.nombre,
-      logoUrl: datos.logoUrl,
-      colorPrimario: datos.colorPrimario,
-      colorSecundario: datos.colorSecundario,
-    });
+    const resultado = await guardarNegocio(
+      {
+        nombre: datos.nombre,
+        colorPrimario: datos.colorPrimario,
+        colorSecundario: datos.colorSecundario,
+      },
+      datos.logo,
+    );
     setGuardando(false);
     if (!resultado.ok) {
       setErrorGuardar(resultado.error);
@@ -659,8 +642,7 @@ function Registro() {
                 Registra tu negocio
               </h1>
               <p className="mt-3 text-lg text-muted-foreground">
-                Dejamos lista la identidad de tu negocio para armar tu sistema de
-                inventario.
+                Dejamos lista la identidad de tu negocio para armar tu sistema de inventario.
               </p>
             </div>
 
@@ -700,9 +682,7 @@ function Registro() {
                         <span
                           className={cn(
                             "truncate",
-                            activo
-                              ? "font-semibold text-foreground"
-                              : "text-muted-foreground",
+                            activo ? "font-semibold text-foreground" : "text-muted-foreground",
                           )}
                         >
                           {paso.titulo}

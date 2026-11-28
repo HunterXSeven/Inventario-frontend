@@ -11,6 +11,8 @@
 import { api } from "@/lib/api";
 import type { Campo, Modulo } from "@/lib/gestor";
 import { claveCampo } from "@/lib/registros";
+import { quitarImagenProducto, subirImagenProducto } from "@/lib/imagenes";
+import type { CambioImagen } from "@/lib/imagenes";
 import type { Valores } from "@/lib/registros";
 import { filasIniciales } from "@/lib/personal";
 import type { FilaPermiso } from "@/lib/personal";
@@ -64,7 +66,6 @@ export function cuerpoEdicionProducto(
     fechavencimiento: original["fechavencimiento"] ?? null,
     lote: original["lote"] ?? null,
     codigoqr: original["codigoqr"] ?? null,
-    imagenurl: original["imagenurl"] ?? null,
   };
   for (const c of campos) {
     const v = (valores[claveCampo(c)] ?? "").trim();
@@ -87,9 +88,6 @@ export function cuerpoEdicionProducto(
       case "codigoQR":
         cuerpo["codigoqr"] = v || null;
         break;
-      case "imagenUrl":
-        cuerpo["imagenurl"] = v || null;
-        break;
       default:
         break; // "stock" no se edita
     }
@@ -102,11 +100,19 @@ export async function editarProducto(
   campos: Campo[],
   valores: Valores,
   original: Record<string, unknown>,
+  imagen?: CambioImagen,
 ): Promise<void> {
   await api(`/productos/${id}`, {
     metodo: "PUT",
     cuerpo: cuerpoEdicionProducto(campos, valores, original),
   });
+  try {
+    if (imagen?.archivo) await subirImagenProducto(Number(id), imagen.archivo);
+    else if (imagen?.quitar) await quitarImagenProducto(Number(id));
+  } catch (e) {
+    const motivo = e instanceof Error ? e.message : "";
+    throw new Error(`Se guardaron los datos, pero la imagen no se pudo cambiar. ${motivo}`.trim());
+  }
 }
 
 export async function eliminarProducto(id: string): Promise<void> {

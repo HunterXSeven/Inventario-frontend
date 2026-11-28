@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { subirLogo } from "@/lib/imagenes";
 import { api, ApiError, borrarToken, guardarToken, leerToken } from "@/lib/api";
 
 /**
@@ -147,6 +148,11 @@ const ERROR_ALMACENAMIENTO =
 
 let sesionEnCache: Promise<Usuario | null> | null = null;
 
+/** Obliga a releer la sesión (nombre, logo y colores) en la próxima consulta. */
+export function invalidarSesion(): void {
+  sesionEnCache = null;
+}
+
 async function cargarSesion(): Promise<Usuario> {
   const yo = await api<YoApi>("/auth/yo");
   let negocio: NegocioGuardado | null = null;
@@ -243,6 +249,37 @@ export async function iniciarSesion(correo: string, contrasena: string): Promise
   }
 }
 
+/**
+ * Acceso con Google: envía la credencial (ID token) que dio Google a POST /auth/google.
+ * El backend la valida y responde como /auth/login; después se lee /auth/yo para conocer
+ * el correo y los permisos, porque la respuesta no los trae.
+ */
+export async function iniciarSesionConGoogle(credencial: string): Promise<ResultadoAcceso> {
+  try {
+    const r = await api<TokenApi>("/auth/google", {
+      metodo: "POST",
+      cuerpo: { credencial },
+      conToken: false,
+    });
+    if (!guardarToken(r.token)) return { ok: false, campo: "general", error: ERROR_ALMACENAMIENTO };
+    sesionEnCache = null;
+    const usuario = await obtenerSesion();
+    if (!usuario) {
+      borrarToken();
+      return {
+        ok: false,
+        campo: "general",
+        error: "No pudimos abrir tu sesión. Inténtalo de nuevo.",
+      };
+    }
+    return { ok: true, usuario };
+  } catch (e) {
+    borrarToken();
+    sesionEnCache = null;
+    return errorDeAcceso(e);
+  }
+}
+
 export function cerrarSesion(): void {
   borrarToken();
   sesionEnCache = null;
@@ -262,7 +299,6 @@ export async function listarSistemas(): Promise<
 
 export interface DatosSistema {
   nombre: string;
-  logoUrl: string;
   colorPrimario: string;
   colorSecundario: string;
 }
@@ -279,7 +315,6 @@ export async function editarSistema(
         nombrenegocio: datos.nombre.trim(),
         colorprincipal: datos.colorPrimario,
         colorsecundario: datos.colorSecundario,
-        logourl: datos.logoUrl.trim() || null,
       },
     });
     sesionEnCache = null; // el panel debe volver a leer nombre y colores
@@ -320,12 +355,14 @@ export async function seleccionarSistema(idsistema: number): Promise<ResultadoNe
  * Crea el negocio del dueño (POST /sistemas) y entra a él
  * (POST /auth/sistema/{id}, que devuelve un token ligado a ese sistema).
  */
-export async function guardarNegocio(datos: {
-  nombre: string;
-  logoUrl: string;
-  colorPrimario: string;
-  colorSecundario: string;
-}): Promise<ResultadoNegocio> {
+export async function guardarNegocio(
+  datos: {
+    nombre: string;
+    colorPrimario: string;
+    colorSecundario: string;
+  },
+  logo?: File | null,
+): Promise<ResultadoNegocio> {
   let creado: SistemaApi;
   try {
     creado = await api<SistemaApi>("/sistemas", {
@@ -334,7 +371,6 @@ export async function guardarNegocio(datos: {
         nombrenegocio: datos.nombre.trim(),
         colorprincipal: datos.colorPrimario,
         colorsecundario: datos.colorSecundario,
-        logourl: datos.logoUrl.trim() || null,
       },
     });
   } catch (e) {
@@ -353,7 +389,19 @@ export async function guardarNegocio(datos: {
         "Tu negocio se creó, pero no pudimos abrirlo. Búscalo en tu lista de sistemas para entrar.",
     };
   }
-  return { ok: true, negocio: aNegocio(creado) };
+  let negocio = aNegocio(creado);
+  if (logo) {
+    try {
+      await subirLogo(creado.idsistema, logo);
+      sesionEnCache = null;
+      const lista = await api<SistemaApi[]>("/sistemas");
+      const actualizado = lista.find((x) => x.idsistema === creado.idsistema);
+      if (actualizado) negocio = aNegocio(actualizado);
+    } catch {
+      // El negocio ya está creado: si el logo falla, se puede subir luego desde "Editar".
+    }
+  }
+  return { ok: true, negocio };
 }
 
 /* ------------------------------------------------------------

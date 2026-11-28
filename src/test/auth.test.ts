@@ -5,6 +5,7 @@ import {
   destinoPara,
   guardarNegocio,
   iniciarSesion,
+  iniciarSesionConGoogle,
   listarSistemas,
   obtenerSesion,
   registrarUsuario,
@@ -93,6 +94,41 @@ describe("Sesión contra el backend", () => {
     expect(r.ok && destinoPara(r.usuario)).toBe("/sistemas");
   });
 
+  it("con Google envía la credencial a /auth/google y abre la sesión del dueño", async () => {
+    const llamadas = simularBackend([
+      { cuerpo: { token: "TG", tipo: "DUENO", sistema: null } },
+      { cuerpo: { correo: "maria@gmail.com", tipo: "DUENO", idsistema: null, permisos: [] } },
+    ]);
+
+    const r = await iniciarSesionConGoogle("ID-TOKEN-DE-GOOGLE");
+
+    expect(llamadas[0]).toMatchObject({
+      ruta: "/auth/google",
+      metodo: "POST",
+      cuerpo: { credencial: "ID-TOKEN-DE-GOOGLE" },
+      auth: null,
+    });
+    expect(llamadas[1]).toMatchObject({ ruta: "/auth/yo", auth: "Bearer TG" });
+    expect(leerToken()).toBe("TG");
+    expect(r.ok && r.usuario).toMatchObject({ correo: "maria@gmail.com", tipo: "DUENO" });
+    expect(r.ok && destinoPara(r.usuario)).toBe("/sistemas");
+  });
+
+  it("con Google muestra el mensaje del backend y no deja token si la credencial es inválida", async () => {
+    simularBackend([
+      { estado: 401, cuerpo: { mensaje: "No pudimos validar tu cuenta de Google." } },
+    ]);
+
+    const r = await iniciarSesionConGoogle("falsa");
+
+    expect(r).toEqual({
+      ok: false,
+      campo: "general",
+      error: "No pudimos validar tu cuenta de Google.",
+    });
+    expect(leerToken()).toBeNull();
+  });
+
   it("el personal entra directo a su sistema", async () => {
     simularBackend([{ cuerpo: { token: "TP", tipo: "PERSONAL", sistema } }]);
 
@@ -162,7 +198,6 @@ describe("Sesión contra el backend", () => {
 
     const r = await guardarNegocio({
       nombre: "  Bodega Doña María ",
-      logoUrl: "",
       colorPrimario: "#2563eb",
       colorSecundario: "#16a34a",
     });
@@ -175,7 +210,6 @@ describe("Sesión contra el backend", () => {
         nombrenegocio: "Bodega Doña María",
         colorprincipal: "#2563eb",
         colorsecundario: "#16a34a",
-        logourl: null,
       },
     });
     expect(llamadas[1]).toMatchObject({

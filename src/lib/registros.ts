@@ -9,6 +9,7 @@
  */
 import { api } from "@/lib/api";
 import type { Campo } from "@/lib/gestor";
+import { subirImagenProducto } from "@/lib/imagenes";
 
 export type Valores = Record<string, string>;
 
@@ -107,9 +108,7 @@ export function cuerpoProducto(campos: Campo[], valores: Valores): Record<string
       case "codigoQR":
         if (v) cuerpo["codigoqr"] = v;
         break;
-      case "imagenUrl":
-        if (v) cuerpo["imagenurl"] = v;
-        break;
+      // La imagen no va en el JSON: se sube aparte (PUT /productos/{id}/imagen).
       default:
         break;
     }
@@ -117,8 +116,26 @@ export function cuerpoProducto(campos: Campo[], valores: Valores): Record<string
   return cuerpo;
 }
 
-export async function crearProducto(campos: Campo[], valores: Valores): Promise<void> {
-  await api("/productos", { metodo: "POST", cuerpo: cuerpoProducto(campos, valores) });
+/** Crea el producto y, si se eligió una imagen, la sube en un segundo paso con su id. */
+export async function crearProducto(
+  campos: Campo[],
+  valores: Valores,
+  imagen?: File | null,
+): Promise<void> {
+  const creado = await api<{ idproducto: number }>("/productos", {
+    metodo: "POST",
+    cuerpo: cuerpoProducto(campos, valores),
+  });
+  if (imagen) {
+    try {
+      await subirImagenProducto(creado.idproducto, imagen);
+    } catch (e) {
+      const motivo = e instanceof Error ? e.message : "";
+      throw new Error(
+        `El producto se creó, pero la imagen no se pudo subir. ${motivo} Edítalo para subirla de nuevo.`.trim(),
+      );
+    }
+  }
 }
 
 /* ------------------------------------------------------------

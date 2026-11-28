@@ -43,6 +43,7 @@ const campos: Record<string, unknown[]> = {
     { idcampo: 1, nombrecampo: "Nombre", tipocampo: "texto", columna: "nombreProducto", orden: 1 },
     { idcampo: 2, nombrecampo: "Precio", tipocampo: "decimal", columna: "precio", orden: 2 },
     { idcampo: 3, nombrecampo: "Stock", tipocampo: "numero", columna: "stock", orden: 3 },
+    { idcampo: 5, nombrecampo: "Imagen", tipocampo: "imagen", columna: "imagenUrl", orden: 4 },
   ],
   "4": [
     { idcampo: 20, nombrecampo: "Nombre", tipocampo: "texto", columna: "nombre", orden: 1 },
@@ -83,6 +84,9 @@ function simular(opciones: { tipo?: "DUENO" | "PERSONAL"; permisos?: unknown[] }
     "GET /modulos/4/campos": campos["4"],
     "GET /personal": [{ idpersonal: 5, nombre: "Ana", dni: "12345678", correo: "ana@correo.com" }],
     "PUT /productos/1": null,
+    "PUT /productos/1/imagen": { idproducto: 1 },
+    "DELETE /productos/1/imagen": { idproducto: 1 },
+    "PUT /productos/2/imagen": { idproducto: 2 },
     "DELETE /productos/1": null,
     "GET /modulos/9/registros?pagina=0&tamano=20": pagina([
       { idregistro: 3, datos: { "40": "Aceros SAC", "41": 2 } },
@@ -131,7 +135,12 @@ function simular(opciones: { tipo?: "DUENO" | "PERSONAL"; permisos?: unknown[] }
       if (init.method === "POST" || init.method === "PUT" || init.method === "DELETE") {
         posts.push({
           ruta: init.method === "POST" ? ruta : `${init.method} ${ruta}`,
-          cuerpo: init.body ? JSON.parse(String(init.body)) : null,
+          cuerpo:
+            init.body instanceof FormData
+              ? { archivo: (init.body.get("imagen") as File).name }
+              : init.body
+                ? JSON.parse(String(init.body))
+                : null,
         });
       }
       const clave = `${init.method} ${ruta}`;
@@ -169,6 +178,37 @@ describe("Agregar registros", () => {
     expect(posts).toEqual([
       { ruta: "/productos", cuerpo: { nombreproducto: "Pintura", precio: 40, stockinicial: 8 } },
     ]);
+  });
+
+  it("agrega un producto y sube su imagen con el id recién creado", async () => {
+    const posts = simular();
+    abrir("/panel");
+    await screen.findByText("Cemento");
+
+    fireEvent.click(screen.getByRole("button", { name: /Agregar registro/ }));
+    fireEvent.change(screen.getByLabelText(/^Nombre/), { target: { value: "Pintura" } });
+    fireEvent.change(screen.getByLabelText(/^Precio/), { target: { value: "40" } });
+    const foto = new File(["x"], "pintura.png", { type: "image/png" });
+    fireEvent.change(screen.getByLabelText("Imagen"), { target: { files: [foto] } });
+    fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+
+    expect(await screen.findByText("Producto agregado.")).toBeInTheDocument();
+    expect(posts).toEqual([
+      { ruta: "/productos", cuerpo: { nombreproducto: "Pintura", precio: 40 } },
+      { ruta: "PUT /productos/2/imagen", cuerpo: { archivo: "pintura.png" } },
+    ]);
+  });
+
+  it("rechaza una imagen que no es JPG, PNG o WebP", async () => {
+    simular();
+    abrir("/panel");
+    await screen.findByText("Cemento");
+
+    fireEvent.click(screen.getByRole("button", { name: /Agregar registro/ }));
+    const pdf = new File(["x"], "ficha.pdf", { type: "application/pdf" });
+    fireEvent.change(screen.getByLabelText("Imagen"), { target: { files: [pdf] } });
+
+    expect(await screen.findByText(/Solo se aceptan imágenes JPG, PNG o WebP/)).toBeInTheDocument();
   });
 
   it("no envía nada si falta el nombre y avisa", async () => {
@@ -473,10 +513,24 @@ describe("Editar y eliminar", () => {
           fechavencimiento: null,
           lote: null,
           codigoqr: null,
-          imagenurl: null,
         },
       },
     ]);
+  });
+
+  it("cambia la imagen de un producto al editarlo", async () => {
+    const posts = simular();
+    abrir("/panel");
+    await screen.findByText("Cemento");
+
+    fireEvent.click(screen.getByRole("button", { name: "Editar Cemento" }));
+    const foto = new File(["x"], "cemento.webp", { type: "image/webp" });
+    fireEvent.change(await screen.findByLabelText("Imagen"), { target: { files: [foto] } });
+    fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+
+    expect(await screen.findByText("Producto actualizado.")).toBeInTheDocument();
+    expect(posts.map((p) => p.ruta)).toEqual(["PUT /productos/1", "PUT /productos/1/imagen"]);
+    expect(posts[1]?.cuerpo).toEqual({ archivo: "cemento.webp" });
   });
 
   it("elimina un producto solo tras confirmar", async () => {

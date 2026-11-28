@@ -28,7 +28,6 @@ describe("App routing", () => {
 
 const datosValidos: DatosNegocio = {
   nombre: "Bodega Doña María",
-  logoUrl: "",
   colorPrimario: "#2563eb",
   colorSecundario: "#16a34a",
 };
@@ -41,18 +40,19 @@ describe("Validación del registro de negocio", () => {
   });
 
   it("limita el nombre a 255 caracteres (largo de la columna del backend)", () => {
-    expect(validarPasoIdentidad({ ...datosValidos, nombre: "a".repeat(256) })).toHaveProperty("nombre");
+    expect(validarPasoIdentidad({ ...datosValidos, nombre: "a".repeat(256) })).toHaveProperty(
+      "nombre",
+    );
   });
 
-  it("el logo es opcional pero, si se escribe, debe ser un enlace http(s)", () => {
-    expect(validarPasoIdentidad({ ...datosValidos, logoUrl: "logo.png" })).toHaveProperty("logoUrl");
-    expect(validarPasoIdentidad({ ...datosValidos, logoUrl: "https://sitio.com/logo.png" })).not.toHaveProperty("logoUrl");
-    expect(validarPasoIdentidad(datosValidos)).not.toHaveProperty("logoUrl");
-  });
-
-  it("el logo no puede superar los 255 caracteres", () => {
-    const largo = `https://sitio.com/${"a".repeat(250)}.png`;
-    expect(validarPasoIdentidad({ ...datosValidos, logoUrl: largo })).toHaveProperty("logoUrl");
+  it("el logo es opcional pero, si se elige, debe ser JPG, PNG o WebP de hasta 5 MB", () => {
+    const png = new File(["x"], "logo.png", { type: "image/png" });
+    const pdf = new File(["x"], "logo.pdf", { type: "application/pdf" });
+    const grande = new File([new Uint8Array(5 * 1024 * 1024 + 1)], "g.png", { type: "image/png" });
+    expect(validarPasoIdentidad({ ...datosValidos, logo: png })).not.toHaveProperty("logo");
+    expect(validarPasoIdentidad({ ...datosValidos, logo: pdf })).toHaveProperty("logo");
+    expect(validarPasoIdentidad({ ...datosValidos, logo: grande })).toHaveProperty("logo");
+    expect(validarPasoIdentidad(datosValidos)).not.toHaveProperty("logo");
   });
 
   it("datos completos y válidos no producen errores", () => {

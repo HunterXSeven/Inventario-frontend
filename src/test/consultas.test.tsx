@@ -182,7 +182,6 @@ describe("Mis sistemas: editar y eliminar", () => {
         nombrenegocio: "Bodega Central",
         colorprincipal: "#ff0000",
         colorsecundario: "#f59e0b",
-        logourl: null,
       }),
     );
   });
